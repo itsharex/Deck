@@ -661,6 +661,17 @@ struct HistoryListView: View {
             return nil
         }
 
+        if event.modifierFlags.intersection([.command, .control, .option]) == .command,
+           event.keyCode == KeyCode.f {
+            vm.suppressSearchFocusUntil = nil
+            if vm.isRulePickerPresented, vm.rulePickerMode == .list {
+                vm.dismissRulePicker()
+            }
+            vm.focusArea = .search
+            vm.refreshSearchFocus()
+            return nil
+        }
+
         // 上/下方向键焦点切换 — 竖版模式中 ↑/↓ 用于列表导航，不切换焦点
         if event.modifierFlags.intersection([.command, .control, .option]).isEmpty {
             if vm.layoutMode == .horizontal {
