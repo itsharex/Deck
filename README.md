@@ -17,7 +17,7 @@
   <a href="https://deckclip.app">
     <img src="https://img.shields.io/badge/platform-macOS_14+-blue?style=flat-square" alt="Platform">
     <img src="https://img.shields.io/badge/swift-5.9+-F05138?style=flat-square&logo=swift&logoColor=white" alt="Swift">
-    <img src="https://img.shields.io/badge/license-GPL--3.0-green?style=flat-square" alt="License">
+    <img src="https://img.shields.io/badge/license-All_Rights_Reserved-red?style=flat-square" alt="License">
   </a>
 </p>
 
@@ -87,7 +87,7 @@
 3. First launch: **Control-click** Deck → Open, then confirm.
 4. Grant **Accessibility** (and **Input Monitoring** if prompted) in `System Settings → Privacy & Security`.
 
-> Source is partially published; building the full app from source is not supported yet.
+> Source code is public for reference only. Please use the official compiled app from Releases.
 
 ## Requirements
 
@@ -156,13 +156,14 @@ More shortcuts and Vim mode are in Settings.
 
 ## License
 
-This project is **partially open source** under **GPL-3.0 with Commons Clause** — see [LICENSE](LICENSE).
+This project is **source-available** and **All Rights Reserved** — see [LICENSE](LICENSE).
 
-**In short:**
-- Free for personal, non-commercial use.
-- You can modify the open-sourced modules.
-- Derivatives must use the same license.
-- Commercial use requires permission.
+### Usage and Rights
+
+- The source code is published for viewing and reference only.
+- No permission is granted to use, modify, redistribute, or commercialize the source code.
+- Use of the official compiled Deck app released by the author is allowed.
+- Feedback and bug reports are welcome through Issues; pull requests are not accepted.
 
 Questions or licensing inquiries → hi@deckclip.app
 
@@ -171,6 +172,7 @@ Questions or licensing inquiries → hi@deckclip.app
 - [Report a Bug](https://github.com/yuzeguitarist/Deck/issues/new?template=bug_report_en.yml)
 - [Request a Feature](https://github.com/yuzeguitarist/Deck/issues/new?template=feature_request_en.yml)
 - [Discussions](https://github.com/yuzeguitarist/Deck/discussions)
+- Pull requests are not accepted for this repository.
 
 ---
 

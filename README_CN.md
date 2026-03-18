@@ -17,7 +17,7 @@
   <a href="https://deckclip.app/zh-cn">
     <img src="https://img.shields.io/badge/platform-macOS_14+-blue?style=flat-square" alt="Platform">
     <img src="https://img.shields.io/badge/swift-5.9+-F05138?style=flat-square&logo=swift&logoColor=white" alt="Swift">
-    <img src="https://img.shields.io/badge/license-GPL--3.0-green?style=flat-square" alt="License">
+    <img src="https://img.shields.io/badge/license-All_Rights_Reserved-red?style=flat-square" alt="License">
   </a>
 </p>
 
@@ -90,7 +90,7 @@
 3. 首次启动：按住 **Control** 点击 Deck → 打开。
 4. 在 `系统设置 → 隐私与安全性` 中授予**辅助功能**（及可能的**输入监控**）权限。
 
-> 当前仅部分源码公开，暂不支持完整从源码构建。
+> 源码公开仅供查看参考，请使用 Releases 里的官方编译版 App。
 
 ## 系统要求
 
@@ -163,13 +163,14 @@
 <a id="许可证"></a>
 ## 许可证
 
-本项目为**部分开源**，采用 **GPL-3.0 + Commons Clause** 许可证 — 详见 [LICENSE](LICENSE)。
+本项目为**源码可见**，并且 **保留所有权利（All Rights Reserved）** — 详见 [LICENSE](LICENSE)。
 
-**简单来说：**
-- 个人/非商业用途免费使用
-- 可修改开源部分
-- 衍生作品须使用相同许可证
-- 商业用途需获得许可
+### 使用与权利说明
+
+- 本仓库公开源码，仅供查看与参考。
+- 未经作者书面许可，不授予对源码的使用、修改、再分发或商业化权利。
+- 你可以使用作者发布的官方编译版 Deck App。
+- 欢迎通过 Issue 提交反馈或问题报告，但本仓库不接受 Pull Request。
 
 如有疑问或授权需求，请联系：hi@deckclip.app
 
@@ -178,6 +179,7 @@
 - [报告 Bug](https://github.com/yuzeguitarist/Deck/issues/new?template=bug_report_cn.yml)
 - [功能建议](https://github.com/yuzeguitarist/Deck/issues/new?template=feature_request_cn.yml)
 - [讨论区](https://github.com/yuzeguitarist/Deck/discussions)
+- 本仓库不接受 Pull Request
 
 ---
 
