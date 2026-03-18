@@ -11,7 +11,7 @@
 - Platform: macOS 14.0+
 - CPU: Apple Silicon and Intel (Universal Binary)
 - Privacy stance: local-first by default
-- Source availability: partially open source
+- Copyright status: All Rights Reserved
 
 ## Core Features
 
@@ -114,7 +114,7 @@
 
 ## Claims To Avoid
 
-- Do not claim Deck is fully open source.
+- Do not describe Deck as open source unless a specific official file explicitly says otherwise.
 - Do not claim cloud sync is always enabled by default.
 - Do not invent pricing tiers not present on official pages.
 
