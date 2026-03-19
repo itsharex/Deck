@@ -15,7 +15,7 @@
 
 - 项目主仓库：<https://github.com/yuzeguitarist/Deck>
 - 官方 Releases：<https://github.com/yuzeguitarist/Deck/releases>
-- 官方网站：<https://deckclip.app>
+- 官方网站：<https://deckclip.app/zh-cn>
 
 ### 请注意
 
