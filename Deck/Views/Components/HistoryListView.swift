@@ -94,10 +94,23 @@ struct HistoryListView: View {
     private var queueQuickSelectBarHintText: String {
         switch DeckUserDefaults.queueQuickSelectAnchor {
         case .leftmost:
-            return "\(quickPasteNumberShortcutText) 从最左侧开始"
+            return String.localizedStringWithFormat(
+                NSLocalizedString("%@ 从最左侧开始", comment: "Queue quick select hint: leftmost"),
+                quickPasteNumberShortcutText
+            )
         case .focused:
-            return "\(quickPasteNumberShortcutText) 从聚焦卡片开始"
+            return String.localizedStringWithFormat(
+                NSLocalizedString("%@ 从聚焦卡片开始", comment: "Queue quick select hint: focused"),
+                quickPasteNumberShortcutText
+            )
         }
+    }
+
+    private var queueSelectedCountText: String {
+        String.localizedStringWithFormat(
+            NSLocalizedString("%lld 项已选", comment: "Queue selected count"),
+            Int64(pasteQueue.queue.count)
+        )
     }
     
     /// Items with context-aware reordering applied
@@ -228,7 +241,7 @@ struct HistoryListView: View {
             HStack(spacing: Const.space12) {
                 HStack(spacing: 6) {
                     Image(systemName: "list.number")
-                    Text("队列模式")
+                    Text(NSLocalizedString("队列模式", comment: "Queue mode"))
                         .fontWeight(.medium)
                 }
                 .foregroundStyle(.orange)
@@ -236,7 +249,7 @@ struct HistoryListView: View {
                 Divider()
                     .frame(height: 14)
 
-                Text("\(pasteQueue.queue.count) 项已选")
+                Text(queueSelectedCountText)
                     .foregroundStyle(.secondary)
             }
             .offset(x: 8)
@@ -248,14 +261,14 @@ struct HistoryListView: View {
                     .font(.caption)
                     .foregroundStyle(.tertiary)
 
-                Text("⌘⇧V 依次粘贴")
+                Text(NSLocalizedString("⌘⇧V 依次粘贴", comment: "Sequential paste hotkey hint"))
                     .font(.caption)
                     .foregroundStyle(.tertiary)
 
                 Button {
                     pasteQueue.clearQueue()
                 } label: {
-                    Text("清空")
+                    Text(NSLocalizedString("清空", comment: "Clear"))
                         .font(.caption)
                 }
                 .buttonStyle(.plain)
@@ -264,7 +277,7 @@ struct HistoryListView: View {
                 Button {
                     pasteQueue.toggleQueueMode()
                 } label: {
-                    Text("退出")
+                    Text(NSLocalizedString("退出", comment: "Exit"))
                         .font(.caption)
                 }
                 .buttonStyle(.plain)
