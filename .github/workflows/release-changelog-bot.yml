@@ -1,0 +1,62 @@
+# 将 GitHub Release（tag / 标题 / 说明 / 附件链接）同步到仓库根目录 CHANGELOG.md
+# - release published：仅处理本次事件中的 Release（不全量拉取列表）
+# - workflow_dispatch：分页拉取全部历史 Release，只补全文件中尚未存在的 tag
+
+name: Release Changelog Bot
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-changelog-bot-${{ github.repository }}
+  cancel-in-progress: false
+
+on:
+  release:
+    types: [published]
+  # 手动运行：始终全量分页拉取 Release，仅补全文件中缺失的 tag（不覆盖已有条目）
+  workflow_dispatch: {}
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout default branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Determine mode
+        id: mode
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "sync_mode=full" >> "$GITHUB_OUTPUT"
+          else
+            echo "sync_mode=incremental" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Sync CHANGELOG.md
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          GITHUB_WORKSPACE: ${{ github.workspace }}
+          SYNC_MODE: ${{ steps.mode.outputs.sync_mode }}
+        run: python3 scripts/sync_release_changelog.py
+
+      - name: Commit and push
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if [ ! -f .release-changelog-changed ]; then
+            echo "无变更，跳过提交"
+            exit 0
+          fi
+          rm -f .release-changelog-changed
+          git add CHANGELOG.md
+          if git diff --staged --quiet; then
+            echo "无暂存差异"
+            exit 0
+          fi
+          git commit -m "chore(changelog): sync GitHub Releases [bot]"
+          git push origin "HEAD:${{ github.event.repository.default_branch }}"

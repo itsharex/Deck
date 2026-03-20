@@ -91,3 +91,6 @@ DeckTests/
 !ExportOptions.plist
 !scripts/
 !photos/
+
+
+__pycache__/
