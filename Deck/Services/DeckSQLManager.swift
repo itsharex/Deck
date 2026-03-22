@@ -1265,35 +1265,70 @@ final class DeckSQLManager: NSObject, @unchecked Sendable {
             try syncOnDBQueue {
                 try openDatabase(at: dbPath)
 
-                if !performIntegrityCheckIfNeeded(force: restoredFromBackupAtStartup) {
+                var integrityOK = performIntegrityCheckIfNeeded(force: restoredFromBackupAtStartup)
+                if !integrityOK {
                     log.warn("Database integrity check failed, attempting to restore from backup")
                     db = nil
                     if backupEnabled {
                         if restoreDatabaseFromBackup(dbPath: dbPath, backupPath: backupPath) {
                             try openDatabase(at: dbPath)
-                            if !performIntegrityCheckIfNeeded(force: true) {
+                            integrityOK = performIntegrityCheckIfNeeded(force: true)
+                            if !integrityOK {
                                 handleDBError(NSError(domain: "DeckSQL", code: -2, userInfo: [
                                     NSLocalizedDescriptionKey: "Database integrity check failed after restore"
                                 ]))
+                                db = nil
+                                throw NSError(domain: "DeckSQL", code: -2, userInfo: [
+                                    NSLocalizedDescriptionKey: "Database integrity check failed after restore"
+                                ])
                             }
                         } else {
                             handleDBError(NSError(domain: "DeckSQL", code: -3, userInfo: [
                                 NSLocalizedDescriptionKey: "Database integrity check failed and no backup available"
                             ]))
+                            throw NSError(domain: "DeckSQL", code: -3, userInfo: [
+                                NSLocalizedDescriptionKey: "Database integrity check failed and no backup available"
+                            ])
                         }
                     } else {
                         handleDBError(NSError(domain: "DeckSQL", code: -4, userInfo: [
                             NSLocalizedDescriptionKey: "Database integrity check failed and automatic backups are disabled"
                         ]))
+                        db = nil
+                        throw NSError(domain: "DeckSQL", code: -4, userInfo: [
+                            NSLocalizedDescriptionKey: "Database integrity check failed and automatic backups are disabled"
+                        ])
                     }
+                }
+
+                guard registerCustomFunctions() else {
+                    log.error("registerCustomFunctions failed; database not fully initialized")
+                    db = nil
+                    table = nil
+                    throw NSError(domain: "DeckSQL", code: -5, userInfo: [
+                        NSLocalizedDescriptionKey: "Failed to register custom SQL functions"
+                    ])
+                }
+                guard createTable() else {
+                    log.error("createTable failed; database not fully initialized")
+                    db = nil
+                    table = nil
+                    throw NSError(domain: "DeckSQL", code: -6, userInfo: [
+                        NSLocalizedDescriptionKey: "Failed to create database tables"
+                    ])
+                }
+                guard applyMigrations() else {
+                    log.error("applyMigrations reported unhealthy state; database not fully initialized")
+                    db = nil
+                    table = nil
+                    throw NSError(domain: "DeckSQL", code: -7, userInfo: [
+                        NSLocalizedDescriptionKey: "Database migrations did not complete in a healthy state"
+                    ])
                 }
 
                 log.info("Database initialized at: \(dbPath)")
                 Self.isInitialized = true
                 lastInitFailureAt = nil
-                registerCustomFunctions()
-                createTable()
-                applyMigrations()
             }
 
             backfillFileSearchTextIfNeeded()
@@ -2340,9 +2375,10 @@ final class DeckSQLManager: NSObject, @unchecked Sendable {
     // MARK: - Custom SQL Functions
 
     /// 注册自定义 SQL 函数（如正则匹配）
-    private func registerCustomFunctions() {
+    /// - Returns: 是否在有效 `db` 上完成注册
+    private func registerCustomFunctions() -> Bool {
         syncOnDBQueue {
-            guard let db = db else { return }
+            guard let db = db else { return false }
 
             // 注册 REGEXP 函数：regexp(pattern, text) -> Bool
             // 使用方式：WHERE search_text REGEXP 'pattern'
@@ -2363,6 +2399,7 @@ final class DeckSQLManager: NSObject, @unchecked Sendable {
                 return isMatch ? Int64(1) : Int64(0)
             }
             log.debug("Registered custom REGEXP function for SQLite")
+            return true
         }
     }
 
@@ -2561,10 +2598,11 @@ final class DeckSQLManager: NSObject, @unchecked Sendable {
         return matchingIds.compactMap { rowsById[$0] }
     }
 
-    private func createTable() {
+    /// - Returns: 是否成功创建主表并挂载 `table` 引用
+    private func createTable() -> Bool {
         do {
-            try syncOnDBQueue {
-                guard let db = db else { return }
+            return try syncOnDBQueue {
+                guard let db = db else { return false }
                 let tab = Table("ClipboardHistory")
                 try db.run(tab.create(ifNotExists: true) { t in
                     t.column(Col.id, primaryKey: .autoincrement)
@@ -2637,9 +2675,11 @@ final class DeckSQLManager: NSObject, @unchecked Sendable {
                 createEmbeddingTable()
 
                 log.info("Database table created successfully")
+                return true
             }
         } catch {
             log.error("DB queue failed during table creation: \(error.localizedDescription)")
+            return false
         }
     }
 
@@ -2852,7 +2892,12 @@ final class DeckSQLManager: NSObject, @unchecked Sendable {
         }
     }
 
-    private func applyMigrations() {
+    /// 迁移流程结束后主库与表引用是否仍可用（用于避免“半初始化”却标记成功）
+    private func migrationStoresLookHealthy() -> Bool {
+        syncOnDBQueue { db != nil && table != nil }
+    }
+
+    private func applyMigrations() -> Bool {
         let currentVersion = getSchemaVersion()
         log.info("Current database schema version: \(currentVersion)")
 
@@ -2925,7 +2970,7 @@ final class DeckSQLManager: NSObject, @unchecked Sendable {
                 finalVersion: Self.currentSchemaVersion,
                 postMigration: postMigration
             )
-            return
+            return migrationStoresLookHealthy()
         }
 
         // Migration 1 -> 2: 添加语义向量缓存表
@@ -2942,7 +2987,7 @@ final class DeckSQLManager: NSObject, @unchecked Sendable {
             }
             applyCustomTitleMigrationIfNeeded()
             backfillSemanticEmbeddingsIfNeeded(targetVersion: Self.currentSchemaVersion)
-            return
+            return migrationStoresLookHealthy()
         }
 
         if needsTemporaryMigration || needsSourceAnchorMigration || needsEncryptionStateMigration || needsCustomTitleMigration {
@@ -2960,6 +3005,7 @@ final class DeckSQLManager: NSObject, @unchecked Sendable {
         }
 
         // 未来的迁移可以继续添加:
+        return migrationStoresLookHealthy()
     }
 
     private func addTemporaryColumnIfNeeded() {
