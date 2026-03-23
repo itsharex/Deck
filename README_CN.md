@@ -86,10 +86,26 @@
 <a id="安装"></a>
 ## 安装
 
+### Homebrew
+
+```bash
+brew tap yuzeguitarist/deck
+brew install --cask deckclip
+```
+
+### 手动安装
+
 1. 从 [Releases](https://github.com/yuzeguitarist/Deck/releases) 下载最新 `.dmg`。
 2. 将 `Deck.app` 拖入 **Applications**。
-3. 首次启动：按住 **Control** 点击 Deck → 打开。
-4. 在 `系统设置 → 隐私与安全性` 中授予**辅助功能**（及可能的**输入监控**）权限。
+3. 在 `系统设置 → 隐私与安全性` 中授予**辅助功能**（及可能的**输入监控**）权限。
+
+### 首次启动
+
+首次打开时，macOS 会提示 **「无法打开"Deck"，因为 Apple 无法检查其是否包含恶意软件。」** 这是因为 App 未通过 Apple 付费开发者计划的公证，本项目源码公开，可以放心使用。
+
+解决方法：前往 **系统设置 → 隐私与安全性**，向下滚动找到关于 Deck 的提示，点击 **仍要打开** 即可。
+
+此操作仅需首次安装时执行一次，后续更新在 App 内自动完成，无需重复操作。
 
 > 源码公开仅供查看参考，请使用 Releases 里的官方编译版 App。
 
