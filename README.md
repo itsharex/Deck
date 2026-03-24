@@ -168,7 +168,7 @@ More shortcuts and Vim mode are in Settings.
 </p>
 
 <p align="center">
-  <img src="photos/buy_me_a_coffee.jpg" alt="WeChat Pay and Alipay QR code" width="320">
+  <img src="photos/buy_me_a_coffee.webp" alt="WeChat Pay and Alipay QR code" width="320">
 </p>
 
 ## License

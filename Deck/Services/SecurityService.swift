@@ -14,6 +14,38 @@ import Security
 
 final class SecurityService {
     static let shared = SecurityService()
+
+    private nonisolated enum BackgroundCrypto {
+        static let keychainService = "com.deck.encryption"
+        static let keychainAccount = "master-key"
+
+        static func currentKey() -> SymmetricKey? {
+            let query: [String: Any] = [
+                kSecClass as String: kSecClassGenericPassword,
+                kSecAttrService as String: keychainService,
+                kSecAttrAccount as String: keychainAccount,
+                kSecReturnData as String: true,
+                kSecMatchLimit as String: kSecMatchLimitOne
+            ]
+
+            var result: AnyObject?
+            let status = SecItemCopyMatching(query as CFDictionary, &result)
+            guard status == errSecSuccess, let keyData = result as? Data else {
+                return nil
+            }
+            return SymmetricKey(data: keyData)
+        }
+
+        static func decryptSilently(_ encryptedData: Data) -> Data? {
+            guard let key = currentKey() else { return nil }
+            do {
+                let sealedBox = try AES.GCM.SealedBox(combined: encryptedData)
+                return try AES.GCM.open(sealedBox, using: key)
+            } catch {
+                return nil
+            }
+        }
+    }
     
     private let context = LAContext()
     private var isAuthenticated = false
@@ -29,6 +61,10 @@ final class SecurityService {
     private var cachedEncryptionKeyLastAccess: Date?
     
     private init() {}
+
+    nonisolated static func backgroundDecryptSilently(_ encryptedData: Data) -> Data? {
+        BackgroundCrypto.decryptSilently(encryptedData)
+    }
     
     // MARK: - Touch ID Authentication
     

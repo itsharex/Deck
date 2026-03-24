@@ -1662,7 +1662,7 @@ final class ClipboardItem: Identifiable, Equatable {
             }
         }
         if let blob = input.blobPath, FileManager.default.fileExists(atPath: blob),
-           let blobData = BlobStorage.shared.load(path: blob) {
+           let blobData = BlobStorage.loadForBackgroundThumbnail(path: blob) {
             return Self.downsampledCGImage(from: blobData, maxPixelSize: maxPixelSize)
         }
         guard !input.inlineData.isEmpty else { return nil }
