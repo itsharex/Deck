@@ -9,6 +9,7 @@
 //
 
 import AppKit
+import Compression
 import Dispatch
 import Foundation
 import JavaScriptCore
@@ -127,6 +128,53 @@ struct ScriptResult {
     let error: String?
 }
 
+struct PluginSharePayload: Codable {
+    let manifest: ScriptManifest
+    let files: [String: String]
+}
+
+enum ScriptPluginPublishError: LocalizedError {
+    case pluginNotFound
+    case invalidManifest
+    case missingMainFile(String)
+    case nonUTF8File(String)
+    case fileTooLarge(String, Int)
+    case encodeFailed
+    case invalidPublishURL
+    case failedToOpenBrowser
+
+    var errorDescription: String? {
+        switch self {
+        case .pluginNotFound:
+            return NSLocalizedString("找不到要发布的脚本插件。", comment: "Script plugin publish error: plugin not found")
+        case .invalidManifest:
+            return NSLocalizedString("插件 manifest.json 无效，无法生成发布链接。", comment: "Script plugin publish error: invalid manifest")
+        case .missingMainFile(let file):
+            return String(
+                format: NSLocalizedString("插件入口文件缺失：%@。请检查 manifest.main 是否指向存在的脚本文件。", comment: "Script plugin publish error: missing main file"),
+                file
+            )
+        case .nonUTF8File(let path):
+            return String(
+                format: NSLocalizedString("插件包含无法作为文本发布的文件：%@。当前一键发布仅支持 UTF-8 文本文件。", comment: "Script plugin publish error: non utf8 file"),
+                path
+            )
+        case .fileTooLarge(let path, let limitBytes):
+            return String(
+                format: NSLocalizedString("文件 %@ 超过大小限制（%d KB），当前一键发布链接无法携带该文件。", comment: "Script plugin publish error: file too large"),
+                path,
+                limitBytes / 1024
+            )
+        case .encodeFailed:
+            return NSLocalizedString("生成发布链接失败，请稍后重试。", comment: "Script plugin publish error: encode failed")
+        case .invalidPublishURL:
+            return NSLocalizedString("发布链接生成失败。", comment: "Script plugin publish error: invalid publish URL")
+        case .failedToOpenBrowser:
+            return NSLocalizedString("已生成发布链接，但无法打开浏览器。", comment: "Script plugin publish error: failed to open browser")
+        }
+    }
+}
+
 // MARK: - Script Plugin Service
 
 @Observable
@@ -148,6 +196,7 @@ final class ScriptPluginService {
     private var pendingReloadWorkItem: DispatchWorkItem?
     private var lastReloadTime = Date.distantPast
     private let minReloadInterval: TimeInterval = 0.3
+    private let pluginPublishBaseURLString = "https://apps.deckclip.app/publish/"
     private let watchQueue = DispatchQueue(label: "deck.script.watch", qos: .utility)
     private let watchLock = NSLock()
     private var scriptsDirectoryWatcher: FileSystemWatcher?
@@ -1513,6 +1562,33 @@ final class ScriptPluginService {
         log.info("Revoked network permission for plugin: \(pluginId)")
     }
 
+    func publishURL(for pluginId: String) throws -> URL {
+        let pluginDirectory = scriptsDirectoryURL
+            .appendingPathComponent(pluginId, isDirectory: true)
+            .standardizedFileURL
+        var isDirectory = ObjCBool(false)
+        guard FileManager.default.fileExists(atPath: pluginDirectory.path, isDirectory: &isDirectory),
+              isDirectory.boolValue else {
+            throw ScriptPluginPublishError.pluginNotFound
+        }
+
+        let payload = try buildSharePayload(from: pluginDirectory)
+        let encoded = try encodeSharePayload(payload)
+        let urlString = pluginPublishBaseURLString + "#data=" + encoded
+        guard let url = URL(string: urlString) else {
+            throw ScriptPluginPublishError.invalidPublishURL
+        }
+        return url
+    }
+
+    func openPublishPage(for pluginId: String) throws {
+        let url = try publishURL(for: pluginId)
+        let opened = NSWorkspace.shared.open(url)
+        guard opened else {
+            throw ScriptPluginPublishError.failedToOpenBrowser
+        }
+    }
+
     // MARK: - Plugin Directory
 
     /// 打开脚本目录
@@ -1523,5 +1599,172 @@ final class ScriptPluginService {
     /// 获取脚本目录路径
     var scriptsPath: String {
         scriptsDirectoryURL.path
+    }
+
+    private func buildSharePayload(from pluginDirectory: URL) throws -> PluginSharePayload {
+        let fileManager = FileManager.default
+        let manifestURL = pluginDirectory.appendingPathComponent("manifest.json", isDirectory: false)
+        let manifestData: Data
+        do {
+            manifestData = try Data(contentsOf: manifestURL)
+        } catch {
+            throw ScriptPluginPublishError.invalidManifest
+        }
+        guard manifestData.count > 0, manifestData.count <= maxManifestBytes,
+              let manifest = try? JSONDecoder().decode(ScriptManifest.self, from: manifestData) else {
+            throw ScriptPluginPublishError.invalidManifest
+        }
+
+        let mainFile = manifest.main.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !mainFile.isEmpty else {
+            throw ScriptPluginPublishError.invalidManifest
+        }
+        let mainFileURL = pluginDirectory.appendingPathComponent(mainFile, isDirectory: false)
+        guard isURL(mainFileURL, within: pluginDirectory),
+              fileManager.fileExists(atPath: mainFileURL.path) else {
+            throw ScriptPluginPublishError.missingMainFile(mainFile)
+        }
+
+        guard let enumerator = fileManager.enumerator(
+            at: pluginDirectory,
+            includingPropertiesForKeys: [.isRegularFileKey, .isDirectoryKey, .isSymbolicLinkKey, .fileSizeKey],
+            options: .skipsHiddenFiles
+        ) else {
+            throw ScriptPluginPublishError.pluginNotFound
+        }
+
+        var files: [String: String] = [:]
+        var containsMainFile = false
+
+        for case let fileURL as URL in enumerator {
+            let standardized = fileURL.standardizedFileURL
+            guard let values = try? standardized.resourceValues(forKeys: [.isRegularFileKey, .isSymbolicLinkKey, .fileSizeKey]),
+                  values.isRegularFile == true,
+                  values.isSymbolicLink != true else {
+                continue
+            }
+            guard isURL(standardized, within: pluginDirectory) else {
+                continue
+            }
+
+            let relativePath = relativePath(of: standardized, from: pluginDirectory)
+            if relativePath.isEmpty || relativePath == "manifest.json" {
+                continue
+            }
+
+            let fileSize = values.fileSize ?? 0
+            if fileSize > maxScriptBytes {
+                throw ScriptPluginPublishError.fileTooLarge(relativePath, maxScriptBytes)
+            }
+
+            let data = try Data(contentsOf: standardized)
+            guard let content = String(data: data, encoding: .utf8) else {
+                throw ScriptPluginPublishError.nonUTF8File(relativePath)
+            }
+
+            files[relativePath] = content
+            if relativePath == mainFile {
+                containsMainFile = true
+            }
+        }
+
+        guard containsMainFile else {
+            throw ScriptPluginPublishError.missingMainFile(mainFile)
+        }
+
+        return PluginSharePayload(manifest: manifest, files: files)
+    }
+
+    private func encodeSharePayload(_ payload: PluginSharePayload) throws -> String {
+        let encoder = JSONEncoder()
+        let jsonData: Data
+        do {
+            jsonData = try encoder.encode(payload)
+        } catch {
+            throw ScriptPluginPublishError.encodeFailed
+        }
+        let compressed = try compressZlib(jsonData)
+        return compressed.base64EncodedString()
+            .replacingOccurrences(of: "+", with: "-")
+            .replacingOccurrences(of: "/", with: "_")
+            .replacingOccurrences(of: "=", with: "")
+    }
+
+    private func compressZlib(_ data: Data) throws -> Data {
+        guard !data.isEmpty else { return Data() }
+
+        let placeholderDst = UnsafeMutablePointer<UInt8>.allocate(capacity: 1)
+        let placeholderSrcMutable = UnsafeMutablePointer<UInt8>.allocate(capacity: 1)
+        let placeholderSrc = UnsafePointer<UInt8>(placeholderSrcMutable)
+        let bufferSize = 64 * 1024
+        let dstBuffer = UnsafeMutablePointer<UInt8>.allocate(capacity: bufferSize)
+        defer {
+            placeholderDst.deallocate()
+            placeholderSrcMutable.deallocate()
+            dstBuffer.deallocate()
+        }
+
+        var stream = compression_stream(
+            dst_ptr: placeholderDst,
+            dst_size: 0,
+            src_ptr: placeholderSrc,
+            src_size: 0,
+            state: nil
+        )
+        var status = compression_stream_init(&stream, COMPRESSION_STREAM_ENCODE, COMPRESSION_ZLIB)
+        guard status != COMPRESSION_STATUS_ERROR else {
+            throw ScriptPluginPublishError.encodeFailed
+        }
+        defer { compression_stream_destroy(&stream) }
+
+        var output = Data()
+        var didError = false
+
+        data.withUnsafeBytes { (rawBuffer: UnsafeRawBufferPointer) -> Void in
+            guard let srcBase = rawBuffer.bindMemory(to: UInt8.self).baseAddress else {
+                didError = true
+                return
+            }
+
+            stream.src_ptr = srcBase
+            stream.src_size = rawBuffer.count
+
+            repeat {
+                stream.dst_ptr = dstBuffer
+                stream.dst_size = bufferSize
+
+                let flags = Int32(stream.src_size == 0 ? COMPRESSION_STREAM_FINALIZE.rawValue : 0)
+                status = compression_stream_process(&stream, flags)
+
+                let produced = bufferSize - stream.dst_size
+                if produced > 0 {
+                    output.append(dstBuffer, count: produced)
+                }
+
+                if status == COMPRESSION_STATUS_ERROR {
+                    didError = true
+                    break
+                }
+            } while status == COMPRESSION_STATUS_OK
+        }
+
+        guard !didError, status == COMPRESSION_STATUS_END else {
+            throw ScriptPluginPublishError.encodeFailed
+        }
+        return output
+    }
+
+    private func relativePath(of fileURL: URL, from baseURL: URL) -> String {
+        let basePath = baseURL.standardizedFileURL.path
+        let filePath = fileURL.standardizedFileURL.path
+        guard filePath.hasPrefix(basePath) else {
+            return fileURL.lastPathComponent
+        }
+
+        var relative = String(filePath.dropFirst(basePath.count))
+        if relative.hasPrefix("/") {
+            relative.removeFirst()
+        }
+        return relative
     }
 }
