@@ -4,6 +4,88 @@ This file is auto-generated from GitHub Releases by [release-changelog-bot](.git
 
 <!-- release-changelog-bot:auto -->
 
+<!-- release-changelog-bot:tag:v1.3.8 -->
+## v1.3.8 — v1.3.8 | lūcidulus
+
+- **Tag:** `v1.3.8`
+- **Published:** 2026-03-30T03:39:03Z
+
+### Release notes
+
+<p align="center">
+  <a href="https://deckclip.app/download" rel="noopener noreferrer" target="_blank">
+    <img width="1525" height="896" alt="Deck" src="https://github.com/yuzeguitarist/Deck/raw/main/photos/Deck.webp" style="max-width: 100%; height: auto;" />
+  </a>
+</p>
+
+---
+
+## Release Notes v1.3.8
+
+### TL;DR
+-   The main panel (⌘P) now slides its content inside a fixed window frame; fullscreen dismiss no longer hitches at the edge, pop-in stays closer to the target size with less end-of-animation micro-jitter.
+-   The history panel now animates as a complete floating surface instead of being hard-clipped by its final rectangular bounds during show and hide.
+-   The macOS 26 dark-mode liquid-glass edge has been softened to reduce the double-outline look created by a bright outer rim plus the darkest outer edge.
+-   Slash search can include or exclude items received via Deck LAN sharing.
+-   Upgrades backfill LAN-received history where paths can be detected reliably.
+-   Fixes LAN-received markers being cleared when the same content is captured again.
+-   Refines top search bar main-thread scheduling to reduce QoS priority-inversion diagnostics and potential micro-stutters.
+-   The AI chat composer now uses a macOS-native input component better suited for large text editing, significantly reducing lag with very large pasted text and Chinese IMEs.
+-   Resolves [Issue #85](https://github.com/yuzeguitarist/Deck/issues/85): once you scroll up during an active AI reply, Deck stops auto-jumping back to the bottom for the rest of that reply.
+-   Fixes incorrect shrink behavior in the compact AI window after multi-line input, preventing the top controls from being pushed toward the middle.
+-   List thumbnails, LAN-received directory cleanup, and the Share submenu compile cleaner under Swift 6 concurrency checks, reducing related Xcode warnings.
+-   Refines the AI assistant system prompts for more consistent replies and clearer behavioral boundaries.
+-   Strengthens autonomous decision-making so the AI chooses tools and follow-ups more proactively with fewer unnecessary confirmation loops.
+-   Improves end-to-end search performance with a faster query and indexing path.
+-   Resolves [Issue #89](https://github.com/yuzeguitarist/Deck/issues/89): in terminals and other text-entry contexts, Cursor Assistant now prefers the insertion point so your eyes do not need to bounce between the mouse and the typing position.
+-   Resolves [Issue #82](https://github.com/yuzeguitarist/Deck/issues/82): vertical layout now shows 1–9 quick-paste hints while the quick-paste modifier is held (⌘ by default).
+-   Resolves [Issue #78](https://github.com/yuzeguitarist/Deck/issues/78): after long idle periods, reopening the history panel surfaces recent clips sooner and uses a lighter localized text-only loading hint.
+-   Script plugins support **Upload to Store**: opens the Deck publish page in your browser with the current plugin pre-filled (no auto-submit).
+-   Installed script plugins no longer show `v1.0.0`-style version badges; manifest examples in the guide and upload/publish error strings are fully localized (zh-Hans, zh-Hant, en, de, fr, ja, ko).
+
+### Added
+-   Use `type:lan` to show only items received on this Mac via Deck LAN sharing, and `-type:lan` to exclude them; combine with other `type:` values using `+`.
+-   Search rule help and hints now document the `lan` type across zh-Hans, zh-Hant, en, de, fr, ja, and ko.
+-   In vertical history, holding the quick-paste modifier shows `• #n` in the row subtitle (11pt bold)—same layout as vertical queue mode—with adaptive neutral gray, distinct from the orange queue `#` labels.
+-   **Upload to Store** under Settings → Script Plugins encodes the manifest and UTF-8 text files into the URL fragment, opens `apps.deckclip.app/publish/#data=…` in your browser with the form pre-filled; nothing is auto-submitted—you finish publishing on the web.
+
+### Improvements
+-   Show/hide slides panel content inside a fixed window frame, avoiding fullscreen edge clipping/snap when animating the whole window off-screen; pop-in matches the target size with less micro-jitter at the end.
+-   The history panel now separates its outer contour from the glass material, and show/hide transitions move the panel as one floating surface to reduce the rectangular clipped look and keep rounded edges more coherent.
+-   Removes redundant User-interactive QoS on deferred main-queue work, passes tag-focus transition state from SwiftUI instead of re-reading global state inside `NSViewRepresentable` updates—reducing “User-interactive waiting on Default QoS” priority-inversion warnings and related hitch risk.
+-   The AI chat composer now uses a native macOS multiline text component and reduces main-thread pressure during typing and pre-send processing, keeping the window more responsive when pasting very large text, using Chinese IMEs, and sending long prompts.
+-   List-row thumbnails use a dedicated background blob read path; LAN-received expiry cleanup logs are marshaled to the main actor asynchronously to avoid default MainActor isolation conflicts.
+-   Rewrites and tightens assistant-facing system prompts—role, capability bounds, output shape, and safety-related constraints are clearer, reducing vague-instruction drift and redundant back-and-forth.
+-   Biases toward autonomous tool use (e.g. search, context reads) and task closure where appropriate, pausing mainly for material ambiguity or higher-risk actions.
+-   Optimizes index updates and query execution to cut latency and main-thread work for common filters and full-text lookups.
+-   In terminals and other text-entry contexts, Cursor Assistant now prefers the active text caret to reduce eye travel between the mouse and the typing position, while still falling back gracefully when an app does not expose reliable caret information.
+-   Script plugin settings follow the standard Deck settings layout and components; the installed list omits per-plugin version badges to avoid confusion with store versioning; upload actions and help text match the current publish flow.
+-   Upload-to-store, publish-page errors, link-generation failures, and validation messages are localized across zh-Hans, zh-Hant, en, de, fr, ja, and ko.
+
+### Changes
+-   The creation guide’s manifest sample and field list no longer include a `version` key (aligned with hiding local semver in the list); **Upload to Store** bundles only the manifest and UTF-8 text files, with per-file size limits—oversized or non-text files surface localized errors in the app.
+
+### Fixes
+-   Tunes the macOS 26 history panel edge rendering in dark mode to reduce the double-outline look caused by a bright outer rim plus a darker outer edge, while preserving the cleaner appearance already seen in light mode.
+-   Re-capturing the same clipboard payload no longer clears the LAN-received flag when upserting by `unique_id`.
+-   In the compact AI window, the first four line breaks now expand downward as intended, the fifth and later lines scroll inside the composer, and removing line breaks shrinks the outer window back cleanly without leaving extra empty space or pushing the top controls into the middle.
+-   While an AI reply is still streaming, scrolling up to read earlier content now immediately disables auto-follow for the rest of that reply, so the view no longer keeps snapping back to the bottom; normal auto-follow resumes on the next reply.
+-   Keeps the in-menu secondary sharing service list and existing share flow while avoiding direct calls to deprecated system listing APIs, removing related deprecation warnings.
+-   Reopening the history panel after long idle periods now surfaces recent clips sooner; while fresh content is still being prepared, Deck shows a lighter localized text-only hint to reduce the blank-then-pop-in feel.
+
+### Compatibility & Behavior Notes
+-   Migration flags unencrypted rows whose stored text/data contains the LAN receive folder path; older plain or inline LAN items without that cue may remain unflagged.
+-   Export may include `receivedFromLAN`; older export files without it import as false.
+
+### Upgrade Notes
+-   Upgrade as usual; for full historical coverage of LAN filtering, re-receive from peers where needed or verify edge cases manually.
+
+---
+
+### Assets
+
+- [`Deck.dmg`](https://github.com/yuzeguitarist/Deck/releases/download/v1.3.8/Deck.dmg)
+
 <!-- release-changelog-bot:tag:v1.3.7 -->
 ## v1.3.7 — v1.3.7 | fastidious
 
