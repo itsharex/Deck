@@ -1,24 +1,25 @@
 <a href="https://deckclip.app/zh-cn">
-    <img width="1024" alt="Deck, 现代、原生、隐私优先的 macOS 剪贴板操作系统" src="photos/Deck.webp">
+    <img width="1024" alt="Deck，现代、原生、隐私优先的 macOS 剪贴板管理器" src="photos/Deck.webp">
 </a>
 
 <p align="center">
-  <a href="#功能特性">功能特性</a> •
-  <a href="#联动">联动</a> •
-  <a href="#安装">安装</a> •
-  <a href="#快速开始">快速开始</a> •
-  <a href="#截图">截图</a> •
-  <a href="#支持作者">支持作者</a> •
-  <a href="#许可证">许可证</a> •
-  <a href="https://deckclip.app/zh-cn">网站</a> •
+  <a href="#功能特性">功能特性</a> ·
+  <a href="#安装">安装</a> ·
+  <a href="#快速开始">快速开始</a> ·
+  <a href="#联动">联动</a> ·
+  <a href="#截图">截图</a> ·
+  <a href="https://deckclip.app/zh-cn/docs">文档</a> ·
+  <a href="#支持作者">支持作者</a> ·
+  <a href="#许可证">许可证</a> ·
+  <a href="https://deckclip.app/zh-cn">网站</a> ·
   <a href="README.md">English</a>
 </p>
 
 <p align="center">
   <a href="https://deckclip.app/zh-cn">
-    <img src="https://img.shields.io/badge/platform-macOS_14+-blue?style=flat-square" alt="Platform">
-    <img src="https://img.shields.io/badge/swift-5.9+-F05138?style=flat-square&logo=swift&logoColor=white" alt="Swift">
-    <img src="https://img.shields.io/badge/license-All_Rights_Reserved-red?style=flat-square" alt="License">
+    <img src="https://img.shields.io/badge/platform-macOS_14+-blue?style=flat-square" alt="macOS 14+ 剪贴板管理器">
+    <img src="https://img.shields.io/badge/swift-5.9+-F05138?style=flat-square&logo=swift&logoColor=white" alt="基于 Swift 5.9+ 构建">
+    <img src="https://img.shields.io/badge/license-All_Rights_Reserved-red?style=flat-square" alt="保留所有权利">
   </a>
 </p>
 
@@ -146,12 +147,12 @@ brew install --cask deckclip
 
 <p align="center">
   <a href="https://deckclip.app/zh-cn">
-    <img src="photos/DeckView.webp" alt="Deck 主界面" width="1024">
+    <img src="photos/DeckView.webp" alt="Deck macOS 剪贴板管理器主界面，展示剪贴板历史搜索与预览" width="1024">
   </a>
 </p>
 <p align="center">
   <a href="https://deckclip.app/zh-cn">
-    <img src="photos/ai-chat.webp" alt="Deck AI" width="1024">
+    <img src="photos/ai-chat.webp" alt="Deck AI 剪贴板助手" width="1024">
   </a>
 </p>
 
@@ -209,7 +210,7 @@ brew install --cask deckclip
  <picture>
    <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/image?repos=yuzeguitarist/Deck&type=timeline&theme=dark&legend=top-left" />
    <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/image?repos=yuzeguitarist/Deck&type=timeline&legend=top-left" />
-   <img alt="GitHub 星标历史图表" src="https://api.star-history.com/image?repos=yuzeguitarist/Deck&type=timeline&legend=top-left" />
+   <img alt="Deck macOS 剪贴板管理器 GitHub 星标历史" src="https://api.star-history.com/image?repos=yuzeguitarist/Deck&type=timeline&legend=top-left" />
  </picture>
 </a>
 

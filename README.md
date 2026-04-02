@@ -1,24 +1,25 @@
 <a href="https://deckclip.app">
-    <img width="1024" alt="Deck, the modern, native, privacy-first clipboard OS for macOS" src="photos/Deck.webp">
+    <img width="1024" alt="The modern, native, privacy-first clipboard manager for macOS." src="photos/Deck.webp">
 </a>
 
 <p align="center">
-  <a href="#features">Features</a> •
-  <a href="#integrations">Integrations</a> •
-  <a href="#install">Install</a> •
-  <a href="#quick-start">Quick Start</a> •
-  <a href="#screenshots">Screenshots</a> •
-  <a href="#support-deck">Support</a> •
-  <a href="#license">License</a> •
-  <a href="https://deckclip.app">Website</a> •
+  <a href="#features">Features</a> ·
+  <a href="#install">Install</a> ·
+  <a href="#quick-start">Quick Start</a> ·
+  <a href="#integrations">Integrations</a> ·
+  <a href="#screenshots">Screenshots</a> ·
+  <a href="https://deckclip.app/docs">Docs</a> ·
+  <a href="#support-deck">Support</a> ·
+  <a href="#license">License</a> ·
+  <a href="https://deckclip.app">Website</a> ·
   <a href="README_CN.md">中文</a>
 </p>
 
 <p align="center">
   <a href="https://deckclip.app">
-    <img src="https://img.shields.io/badge/platform-macOS_14+-blue?style=flat-square" alt="Platform">
-    <img src="https://img.shields.io/badge/swift-5.9+-F05138?style=flat-square&logo=swift&logoColor=white" alt="Swift">
-    <img src="https://img.shields.io/badge/license-All_Rights_Reserved-red?style=flat-square" alt="License">
+    <img src="https://img.shields.io/badge/platform-macOS_14+-blue?style=flat-square" alt="macOS 14+ clipboard manager">
+    <img src="https://img.shields.io/badge/swift-5.9+-F05138?style=flat-square&logo=swift&logoColor=white" alt="Built with Swift 5.9+">
+    <img src="https://img.shields.io/badge/license-All_Rights_Reserved-red?style=flat-square" alt="All Rights Reserved">
   </a>
 </p>
 
@@ -101,7 +102,7 @@ brew install --cask deckclip
 
 ### First Launch
 
-On the first launch, macOS will show **"Deck" can't be opened because Apple cannot check it for malicious software.** This is because the app is not notarized via Apple's paid Developer Program — the app is open-source and safe to use.
+On the first launch, macOS will show **"Deck" can't be opened because Apple cannot check it for malicious software.** This is because the app is not notarized via Apple's paid Developer Program — the app is source-available and safe to use.
 
 To resolve this: go to **System Settings → Privacy & Security**, scroll down to find the blocked message for Deck, and click **Open Anyway**.
 
@@ -141,12 +142,12 @@ More shortcuts and Vim mode are in Settings.
 
 <p align="center">
   <a href="https://deckclip.app">
-    <img src="photos/DeckView.webp" alt="Deck Main View" width="1024">
+    <img src="photos/DeckView.webp" alt="Deck clipboard manager main interface showing clipboard history search and preview" width="1024">
   </a>
 </p>
 <p align="center">
   <a href="https://deckclip.app">
-    <img src="photos/ai-chat.webp" alt="Deck AI Chat" width="1024">
+    <img src="photos/ai-chat.webp" alt="Deck AI-powered clipboard assistant for macOS" width="1024">
   </a>
 </p>
 
@@ -202,7 +203,7 @@ Questions or licensing inquiries → hi@deckclip.app
  <picture>
    <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/image?repos=yuzeguitarist/Deck&type=timeline&theme=dark&legend=top-left" />
    <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/image?repos=yuzeguitarist/Deck&type=timeline&legend=top-left" />
-   <img alt="Star History Chart" src="https://api.star-history.com/image?repos=yuzeguitarist/Deck&type=timeline&legend=top-left" />
+   <img alt="Deck clipboard manager GitHub star history" src="https://api.star-history.com/image?repos=yuzeguitarist/Deck&type=timeline&legend=top-left" />
  </picture>
 </a>
 
