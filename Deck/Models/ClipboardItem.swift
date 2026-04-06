@@ -1698,27 +1698,33 @@ final class ClipboardItem: Identifiable, Equatable {
         return CGImageSourceCreateThumbnailAtIndex(source, 0, thumbnailOptions)
     }
 
-    /// 与 `generateThumbnailFromFile(path:)` 策略对齐：优先 ImageIO 缩略图，失败再用 `NSImage`（对 HEIC 更稳）。
+    /// 与 `generateThumbnailFromFile(path:)` 策略对齐：仅用 ImageIO（无 AppKit 主线程假设）。
+    /// 顺序：URL + IfAbsent → URL + Always（与 `downsampledCGImage(from:)` 一致）→ 映射读入 Data 再解码（部分格式在 URL / Data 源下表现不同）。
     nonisolated private static func cgImageThumbnailFromFileURL(_ url: URL, maxPixelSize: Int) -> CGImage? {
         let sourceOptions = [kCGImageSourceShouldCache: false] as CFDictionary
-        let thumbnailOptions: [CFString: Any] = [
+        let maxPx = max(1, maxPixelSize)
+        let optionsIfAbsent: [CFString: Any] = [
             kCGImageSourceCreateThumbnailFromImageIfAbsent: true,
             kCGImageSourceShouldCacheImmediately: true,
             kCGImageSourceCreateThumbnailWithTransform: true,
-            kCGImageSourceThumbnailMaxPixelSize: max(1, maxPixelSize)
+            kCGImageSourceThumbnailMaxPixelSize: maxPx
         ]
         if let source = CGImageSourceCreateWithURL(url as CFURL, sourceOptions),
-           let cg = CGImageSourceCreateThumbnailAtIndex(source, 0, thumbnailOptions as CFDictionary) {
+           let cg = CGImageSourceCreateThumbnailAtIndex(source, 0, optionsIfAbsent as CFDictionary) {
             return cg
         }
-        if let img = NSImage(contentsOf: url),
-           let resized = img.resizedSafely(maxSize: CGFloat(maxPixelSize)),
-           let tiff = resized.tiffRepresentation,
-           let rep = NSBitmapImageRep(data: tiff),
-           let cg = rep.cgImage {
+        let optionsAlways: [CFString: Any] = [
+            kCGImageSourceCreateThumbnailFromImageAlways: true,
+            kCGImageSourceShouldCacheImmediately: true,
+            kCGImageSourceCreateThumbnailWithTransform: true,
+            kCGImageSourceThumbnailMaxPixelSize: maxPx
+        ]
+        if let source = CGImageSourceCreateWithURL(url as CFURL, sourceOptions),
+           let cg = CGImageSourceCreateThumbnailAtIndex(source, 0, optionsAlways as CFDictionary) {
             return cg
         }
-        return nil
+        guard let data = try? Data(contentsOf: url, options: [.mappedIfSafe]) else { return nil }
+        return downsampledCGImage(from: data, maxPixelSize: maxPixelSize)
     }
 
     nonisolated private static func downsampledCGImage(fromFileURL url: URL, maxPixelSize: Int) -> CGImage? {
