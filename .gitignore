@@ -12,6 +12,7 @@ xcuserdata/
 .codex/
 plan/
 
+
 cursor-*.md
 
 
@@ -94,3 +95,6 @@ DeckTests/
 
 
 __pycache__/
+
+# DeckClip (Rust CLI)
+deckclip/target/

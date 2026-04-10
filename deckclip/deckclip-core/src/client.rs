@@ -1,0 +1,233 @@
+use std::time::Duration;
+
+use deckclip_protocol::message::{AuthRequest, AuthResponse, Request, Response};
+use deckclip_protocol::version::PROTOCOL_VERSION;
+use serde_json::{json, Value};
+use tokio::time::timeout;
+use tracing::debug;
+use uuid::Uuid;
+
+use crate::auth::{self, current_timestamp, generate_nonce, sign_request};
+use crate::config::Config;
+use crate::error::DeckError;
+use crate::transport::Transport;
+
+/// High-level client for communicating with the Deck App.
+pub struct DeckClient {
+    config: Config,
+    transport: Option<Transport>,
+    session_token: Option<String>,
+    session_expires_at: u64,
+}
+
+impl DeckClient {
+    pub fn new(config: Config) -> Self {
+        Self {
+            config,
+            transport: None,
+            session_token: None,
+            session_expires_at: 0,
+        }
+    }
+
+    /// Ensure we have an authenticated connection.
+    async fn ensure_connected(&mut self) -> Result<(), DeckError> {
+        let now = current_timestamp();
+
+        // If we have a valid session, check if transport is still alive
+        if self.transport.is_some()
+            && self.session_token.is_some()
+            && now < self.session_expires_at
+        {
+            return Ok(());
+        }
+
+        // (Re)connect
+        debug!("connecting to Deck App...");
+        let transport = Transport::connect(&self.config.socket_path).await?;
+        self.transport = Some(transport);
+
+        // Read token and perform handshake
+        let token = auth::read_token(&self.config.token_path).await?;
+        self.handshake(&token).await?;
+
+        Ok(())
+    }
+
+    /// Perform the authentication handshake.
+    async fn handshake(&mut self, token: &str) -> Result<(), DeckError> {
+        let transport = self.transport.as_mut().ok_or(DeckError::NotRunning)?;
+
+        let auth_req = AuthRequest::new(token.to_string());
+        transport.send(&auth_req).await?;
+
+        let auth_resp: AuthResponse = transport.recv().await?;
+        if !auth_resp.is_ok() {
+            return Err(DeckError::Auth(
+                auth_resp.error.unwrap_or_else(|| "认证被拒绝".into()),
+            ));
+        }
+
+        self.session_token = auth_resp.session_token;
+        self.session_expires_at = auth_resp.expires_at.unwrap_or(0);
+        debug!("authenticated, session expires at {}", self.session_expires_at);
+
+        Ok(())
+    }
+
+    /// Send a command and wait for the response.
+    async fn execute(&mut self, cmd: &str, args: Value) -> Result<Response, DeckError> {
+        self.ensure_connected().await?;
+
+        let session_key = self
+            .session_token
+            .as_deref()
+            .ok_or_else(|| DeckError::Auth("无 session token".into()))?;
+
+        let id = Uuid::new_v4().to_string();
+        let ts = current_timestamp();
+        let nonce = generate_nonce();
+        let body = serde_json::to_vec(&args).unwrap_or_default();
+        let sig = sign_request(session_key, ts, &nonce, &body);
+
+        let request = Request {
+            v: PROTOCOL_VERSION,
+            id: id.clone(),
+            ts,
+            nonce,
+            sig,
+            cmd: cmd.to_string(),
+            args,
+        };
+
+        let transport = self.transport.as_mut().ok_or(DeckError::NotRunning)?;
+        transport.send(&request).await?;
+
+        let duration = Duration::from_millis(self.config.timeout_ms);
+        let response: Response = timeout(duration, transport.recv())
+            .await
+            .map_err(|_| DeckError::Timeout)??;
+
+        if response.id != id {
+            return Err(DeckError::Protocol(format!(
+                "响应 ID 不匹配: expected {}, got {}",
+                id, response.id
+            )));
+        }
+
+        if !response.ok {
+            if let Some(err) = &response.error {
+                return Err(DeckError::Server {
+                    code: err.code.clone(),
+                    message: err.message.clone(),
+                });
+            }
+        }
+
+        Ok(response)
+    }
+
+    // ─── Public API ───
+
+    pub async fn health(&mut self) -> Result<Response, DeckError> {
+        self.execute(deckclip_protocol::cmd::HEALTH, json!({})).await
+    }
+
+    pub async fn read(&mut self) -> Result<Response, DeckError> {
+        self.execute(deckclip_protocol::cmd::READ, json!({})).await
+    }
+
+    pub async fn write(
+        &mut self,
+        text: &str,
+        tag: Option<&str>,
+        tag_id: Option<&str>,
+        raw: bool,
+    ) -> Result<Response, DeckError> {
+        let mut args = json!({ "text": text });
+        if let Some(t) = tag {
+            args["tag"] = json!(t);
+        }
+        if let Some(id) = tag_id {
+            args["tagId"] = json!(id);
+        }
+        if raw {
+            args["raw"] = json!(true);
+        }
+        self.execute(deckclip_protocol::cmd::WRITE, args).await
+    }
+
+    pub async fn paste(
+        &mut self,
+        index: u32,
+        plain: bool,
+        target: Option<&str>,
+    ) -> Result<Response, DeckError> {
+        let mut args = json!({ "index": index });
+        if plain {
+            args["plain"] = json!(true);
+        }
+        if let Some(t) = target {
+            args["target"] = json!(t);
+        }
+        self.execute(deckclip_protocol::cmd::PASTE, args).await
+    }
+
+    pub async fn panel_toggle(&mut self) -> Result<Response, DeckError> {
+        self.execute(deckclip_protocol::cmd::PANEL_TOGGLE, json!({}))
+            .await
+    }
+
+    pub async fn ai_run(
+        &mut self,
+        prompt: &str,
+        text: Option<&str>,
+        save: bool,
+        tag_id: Option<&str>,
+    ) -> Result<Response, DeckError> {
+        let mut args = json!({ "prompt": prompt });
+        if let Some(t) = text {
+            args["text"] = json!(t);
+        }
+        if save {
+            args["save"] = json!(true);
+        }
+        if let Some(id) = tag_id {
+            args["tagId"] = json!(id);
+        }
+        self.execute(deckclip_protocol::cmd::AI_RUN, args).await
+    }
+
+    pub async fn ai_search(
+        &mut self,
+        query: &str,
+        mode: Option<&str>,
+        limit: Option<u32>,
+    ) -> Result<Response, DeckError> {
+        let mut args = json!({ "query": query });
+        if let Some(m) = mode {
+            args["mode"] = json!(m);
+        }
+        if let Some(l) = limit {
+            args["limit"] = json!(l);
+        }
+        self.execute(deckclip_protocol::cmd::AI_SEARCH, args).await
+    }
+
+    pub async fn ai_transform(
+        &mut self,
+        prompt: &str,
+        text: Option<&str>,
+        plugin: Option<&str>,
+    ) -> Result<Response, DeckError> {
+        let mut args = json!({ "prompt": prompt });
+        if let Some(t) = text {
+            args["text"] = json!(t);
+        }
+        if let Some(p) = plugin {
+            args["plugin"] = json!(p);
+        }
+        self.execute(deckclip_protocol::cmd::AI_TRANSFORM, args)
+            .await
+    }
+}
