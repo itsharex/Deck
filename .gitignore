@@ -8,22 +8,21 @@ xcuserdata/
 *.ipa
 *.xcarchive
 *.zip
+.cursor/
+.codex/
 
-# 不公开的根部敏感/辅助文档
 cursor-*.md
 
-# 本地打包脚本/素材
+
 release.sh
 background.png
 
-# Orbit CLI bridge local artifacts (port 53129)
 orbit-bridge-53129*
 OrbitBridge-53129*
 
-# 默认忽略 App 源码
 Deck/*
 
-# 允许公开的服务（其余服务保持忽略）
+# 公开
 !Deck/Services/
 Deck/Services/*
 !Deck/Services/ScriptPluginService.swift
@@ -31,25 +30,25 @@ Deck/Services/*
 !Deck/Services/DeckSQLManager.swift
 !Deck/Services/SecurityService.swift
 
-# 允许公开的通用工具
+# 公开
 !Deck/Utilities/
 Deck/Utilities/*
 !Deck/Utilities/Extensions.swift
 !Deck/Utilities/Constants.swift
 !Deck/Utilities/AppLogger.swift
 
-# 允许公开的模型（如有敏感可改成忽略）
+# 公开
 !Deck/Models/
 Deck/Models/*
 !Deck/Models/DeckTag.swift
 !Deck/Models/ClipboardItem.swift
 
-# 允许公开的资源
+# 公开
 !Deck/Resources/
 Deck/Resources/*
 !Deck/Resources/AppTypePreferences.json
 
-# 明确保持忽略的 UI / 入口 / 资产 / 配置
+# 忽略的 UI / 入口 / 资产 / 配置
 Deck/App/
 Deck/Controllers/
 Deck/Views/
