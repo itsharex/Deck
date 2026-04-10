@@ -10,6 +10,7 @@ xcuserdata/
 *.zip
 .cursor/
 .codex/
+plan/
 
 cursor-*.md
 
