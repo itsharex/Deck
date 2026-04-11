@@ -22,6 +22,8 @@ pub fn run(output: OutputMode) {
                 print!("{}", LOGO);
             }
             println!("deckclip {}", version);
+            println!("\x1b]8;;https://deckclip.app\x07DeckClip@Deck\x1b]8;;\x07");
+            println!("© 2024-2026 Yuze Pan. All rights reserved.");
         }
         OutputMode::Json => {
             println!("{}", json!({ "version": version }));
