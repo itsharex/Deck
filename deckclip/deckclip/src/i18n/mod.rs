@@ -24,7 +24,12 @@ pub fn t(key: &str) -> String {
         .unwrap_or_else(|| key.to_string())
 }
 
-/// Detect macOS system locale from global preferences.
+/// Detect locale from the Deck App's locale file.
+///
+/// Priority:
+/// 1. `DECKCLIP_LANG` env var (for debugging/testing)
+/// 2. `~/Library/Application Support/Deck/deckclip_locale` (written by Deck App)
+/// 3. Fallback to zh-Hans
 fn detect_macos_locale() -> String {
     // Allow explicit override via environment variable (for testing/debugging)
     if let Ok(val) = std::env::var("DECKCLIP_LANG") {
@@ -33,27 +38,13 @@ fn detect_macos_locale() -> String {
         }
     }
 
-    // Try reading AppleLanguages from macOS global preferences
-    if let Ok(output) = std::process::Command::new("defaults")
-        .args(["read", "-g", "AppleLanguages"])
-        .output()
-    {
-        if output.status.success() {
-            let text = String::from_utf8_lossy(&output.stdout);
-            // Parse plist array format: ( "zh-Hans-CN", "en-US", ... )
-            for line in text.lines() {
-                let trimmed = line.trim().trim_matches(|c| c == '"' || c == ',');
-                if let Some(lang) = map_to_supported_locale(trimmed) {
-                    return lang.to_string();
-                }
-            }
-        }
-    }
-
-    // Fallback: check LANG / LC_ALL environment variables
-    for var in &["LC_ALL", "LANG", "LC_MESSAGES"] {
-        if let Ok(val) = std::env::var(var) {
-            if let Some(lang) = map_to_supported_locale(&val) {
+    // Read Deck App's locale file — the single source of truth
+    if let Some(home) = std::env::var_os("HOME") {
+        let locale_path = std::path::PathBuf::from(home)
+            .join("Library/Application Support/Deck/deckclip_locale");
+        if let Ok(content) = std::fs::read_to_string(&locale_path) {
+            let trimmed = content.trim();
+            if let Some(lang) = map_to_supported_locale(trimmed) {
                 return lang.to_string();
             }
         }
