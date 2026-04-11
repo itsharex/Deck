@@ -25,7 +25,19 @@ async fn main() {
         .init();
 
     // Build & localize clap command, then parse
-    let matches = localize_command(Cli::command()).get_matches();
+    let matches = match localize_command(Cli::command()).try_get_matches() {
+        Ok(matches) => matches,
+        Err(err) if err.kind() == clap::error::ErrorKind::DisplayVersion => {
+            let output = if std::env::args().any(|arg| arg == "--json") {
+                OutputMode::Json
+            } else {
+                OutputMode::Text
+            };
+            commands::version::run(output);
+            return;
+        }
+        Err(err) => err.exit(),
+    };
 
     // Handle our custom "help" subcommand by re-invoking with --help
     if let Some(("help", sub)) = matches.subcommand() {
