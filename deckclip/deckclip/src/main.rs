@@ -25,8 +25,23 @@ async fn main() {
         .init();
 
     // Build & localize clap command, then parse
-    let cmd = localize_command(Cli::command());
-    let matches = cmd.get_matches();
+    let matches = localize_command(Cli::command()).get_matches();
+
+    // Handle our custom "help" subcommand by re-invoking with --help
+    if let Some(("help", sub)) = matches.subcommand() {
+        let subcmd_names: Vec<&str> = sub
+            .get_many::<String>("command")
+            .map(|vals| vals.map(|s| s.as_str()).collect())
+            .unwrap_or_default();
+        // Build: ["deckclip", ...subcmd_names, "--help"]
+        let mut args: Vec<&str> = vec!["deckclip"];
+        args.extend(subcmd_names);
+        args.push("--help");
+        // This will print help and exit
+        let _ = localize_command(Cli::command()).get_matches_from(args);
+        return;
+    }
+
     let cli = Cli::from_arg_matches(&matches).expect("Failed to parse CLI args");
 
     let output = if cli.json {
@@ -50,8 +65,39 @@ async fn main() {
 fn localize_command(cmd: clap::Command) -> clap::Command {
     use i18n::t;
 
+    // Use custom help/version templates to localize built-in text
+    let help_short = t("help.short");
+    let help_long = t("help.long");
+    let ver_short = t("version.short");
+    let help_sub = t("help.subcommand");
+
     cmd.about(t("cli.about"))
         .long_about(t("cli.long_about"))
+        .disable_help_flag(true)
+        .disable_version_flag(true)
+        .disable_help_subcommand(true)
+        .subcommand(
+            clap::Command::new("help")
+                .about(help_sub)
+                .arg(clap::Arg::new("command").num_args(..)),
+        )
+        .arg(
+            clap::Arg::new("help")
+                .short('h')
+                .long("help")
+                .help(help_short)
+                .long_help(help_long)
+                .action(clap::ArgAction::Help)
+                .global(true),
+        )
+        .arg(
+            clap::Arg::new("version")
+                .short('V')
+                .long("version")
+                .help(ver_short)
+                .action(clap::ArgAction::Version)
+                .global(true),
+        )
         .mut_arg("json", |a| a.help(t("arg.json")))
         .mut_subcommand("health", |s| s.about(t("cmd.health")))
         .mut_subcommand("write", |s| {

@@ -28,9 +28,15 @@ pub fn get(locale: &str, key: &str) -> Option<String> {
 fn zh_hans() -> Map {
     HashMap::from([
         // CLI top-level
-        ("cli.about", "DeckClip — Deck 剪贴板管理工具的命令行接口"),
-        ("cli.long_about", "DeckClip — Deck 剪贴板管理工具的命令行接口\n\nAI Agent 可直接调用上述命令操作 Deck 剪贴板。\n详细用法: deckclip <command> --help"),
-        ("arg.json", "所有输出使用 JSON 格式（适用于编程调用）"),
+        ("cli.about", "\u{1b}]8;;https://deckclip.app/zh-cn\u{1b}\\DeckClip@Deck\u{1b}]8;;\u{1b}\\"),
+        ("cli.long_about", "\u{1b}]8;;https://deckclip.app/zh-cn\u{1b}\\DeckClip@Deck\u{1b}]8;;\u{1b}\\\n\nAI Agent 可直接调用命令操作 Deck 剪贴板。\n详细用法: deckclip <command> --help"),
+        ("arg.json", "使用 JSON 格式输出"),
+
+        // clap built-in overrides
+        ("help.short", "显示帮助信息（使用 --help 查看更多）"),
+        ("help.long", "显示帮助信息（使用 -h 查看摘要）"),
+        ("version.short", "显示版本"),
+        ("help.subcommand", "显示帮助信息或子命令的帮助"),
 
         // Subcommands
         ("cmd.health", "检查 Deck App 连接状态"),
@@ -103,9 +109,14 @@ fn zh_hans() -> Map {
 
 fn en() -> Map {
     HashMap::from([
-        ("cli.about", "DeckClip — command-line interface for Deck clipboard manager"),
-        ("cli.long_about", "DeckClip — command-line interface for Deck clipboard manager\n\nAI agents can call these commands directly to operate the Deck clipboard.\nUsage: deckclip <command> --help"),
-        ("arg.json", "Output in JSON format (for programmatic use)"),
+        ("cli.about", "\u{1b}]8;;https://deckclip.app\u{1b}\\DeckClip@Deck\u{1b}]8;;\u{1b}\\"),
+        ("cli.long_about", "\u{1b}]8;;https://deckclip.app\u{1b}\\DeckClip@Deck\u{1b}]8;;\u{1b}\\\n\nAI agents can call these commands to operate the Deck clipboard.\nUsage: deckclip <command> --help"),
+        ("arg.json", "Output in JSON format"),
+
+        ("help.short", "Print help (see more with '--help')"),
+        ("help.long", "Print help (see a summary with '-h')"),
+        ("version.short", "Print version"),
+        ("help.subcommand", "Print this message or the help of the given subcommand(s)"),
 
         ("cmd.health", "Check Deck App connection status"),
         ("cmd.write", "Write text to Deck clipboard"),
@@ -170,9 +181,14 @@ fn en() -> Map {
 
 fn de() -> Map {
     HashMap::from([
-        ("cli.about", "DeckClip — Befehlszeilenschnittstelle für den Deck-Zwischenablage-Manager"),
-        ("cli.long_about", "DeckClip — Befehlszeilenschnittstelle für den Deck-Zwischenablage-Manager\n\nKI-Agenten können diese Befehle direkt aufrufen.\nVerwendung: deckclip <command> --help"),
-        ("arg.json", "Alle Ausgaben im JSON-Format (für programmatische Nutzung)"),
+        ("cli.about", "\u{1b}]8;;https://deckclip.app\u{1b}\\DeckClip@Deck\u{1b}]8;;\u{1b}\\"),
+        ("cli.long_about", "\u{1b}]8;;https://deckclip.app\u{1b}\\DeckClip@Deck\u{1b}]8;;\u{1b}\\\n\nKI-Agenten können diese Befehle direkt aufrufen.\nVerwendung: deckclip <command> --help"),
+        ("arg.json", "Ausgabe im JSON-Format"),
+
+        ("help.short", "Hilfe anzeigen (mehr mit '--help')"),
+        ("help.long", "Hilfe anzeigen (Zusammenfassung mit '-h')"),
+        ("version.short", "Version anzeigen"),
+        ("help.subcommand", "Diese Nachricht oder die Hilfe eines Unterbefehls anzeigen"),
 
         ("cmd.health", "Deck App Verbindungsstatus prüfen"),
         ("cmd.write", "Text in die Deck-Zwischenablage schreiben"),
@@ -237,9 +253,14 @@ fn de() -> Map {
 
 fn fr() -> Map {
     HashMap::from([
-        ("cli.about", "DeckClip — interface en ligne de commande pour le gestionnaire de presse-papiers Deck"),
-        ("cli.long_about", "DeckClip — interface en ligne de commande pour le gestionnaire de presse-papiers Deck\n\nLes agents IA peuvent appeler ces commandes directement.\nUtilisation : deckclip <command> --help"),
-        ("arg.json", "Sortie au format JSON (pour utilisation programmatique)"),
+        ("cli.about", "\u{1b}]8;;https://deckclip.app\u{1b}\\DeckClip@Deck\u{1b}]8;;\u{1b}\\"),
+        ("cli.long_about", "\u{1b}]8;;https://deckclip.app\u{1b}\\DeckClip@Deck\u{1b}]8;;\u{1b}\\\n\nLes agents IA peuvent appeler ces commandes directement.\nUtilisation : deckclip <command> --help"),
+        ("arg.json", "Sortie au format JSON"),
+
+        ("help.short", "Afficher l'aide (plus avec '--help')"),
+        ("help.long", "Afficher l'aide (résumé avec '-h')"),
+        ("version.short", "Afficher la version"),
+        ("help.subcommand", "Afficher ce message ou l'aide d'une sous-commande"),
 
         ("cmd.health", "Vérifier la connexion à Deck App"),
         ("cmd.write", "Écrire du texte dans le presse-papiers Deck"),
@@ -304,9 +325,14 @@ fn fr() -> Map {
 
 fn ja() -> Map {
     HashMap::from([
-        ("cli.about", "DeckClip — Deck クリップボードマネージャーのコマンドラインインターフェース"),
-        ("cli.long_about", "DeckClip — Deck クリップボードマネージャーのコマンドラインインターフェース\n\nAI エージェントはこれらのコマンドを直接呼び出すことができます。\n使い方: deckclip <command> --help"),
-        ("arg.json", "すべての出力を JSON 形式で表示（プログラム利用向け）"),
+        ("cli.about", "\u{1b}]8;;https://deckclip.app\u{1b}\\DeckClip@Deck\u{1b}]8;;\u{1b}\\"),
+        ("cli.long_about", "\u{1b}]8;;https://deckclip.app\u{1b}\\DeckClip@Deck\u{1b}]8;;\u{1b}\\\n\nAI エージェントはこれらのコマンドを直接呼び出すことができます。\n使い方: deckclip <command> --help"),
+        ("arg.json", "JSON 形式で出力"),
+
+        ("help.short", "ヘルプを表示（詳細は '--help'）"),
+        ("help.long", "ヘルプを表示（概要は '-h'）"),
+        ("version.short", "バージョン表示"),
+        ("help.subcommand", "このメッセージまたはサブコマンドのヘルプを表示"),
 
         ("cmd.health", "Deck App の接続状態を確認"),
         ("cmd.write", "Deck クリップボードにテキストを書き込む"),
@@ -371,9 +397,14 @@ fn ja() -> Map {
 
 fn ko() -> Map {
     HashMap::from([
-        ("cli.about", "DeckClip — Deck 클립보드 관리자 명령줄 인터페이스"),
-        ("cli.long_about", "DeckClip — Deck 클립보드 관리자 명령줄 인터페이스\n\nAI 에이전트가 이 명령어를 직접 호출할 수 있습니다.\n사용법: deckclip <command> --help"),
-        ("arg.json", "모든 출력을 JSON 형식으로 표시 (프로그래밍 사용)"),
+        ("cli.about", "\u{1b}]8;;https://deckclip.app\u{1b}\\DeckClip@Deck\u{1b}]8;;\u{1b}\\"),
+        ("cli.long_about", "\u{1b}]8;;https://deckclip.app\u{1b}\\DeckClip@Deck\u{1b}]8;;\u{1b}\\\n\nAI 에이전트가 이 명령어를 직접 호출할 수 있습니다.\n사용법: deckclip <command> --help"),
+        ("arg.json", "JSON 형식으로 출력"),
+
+        ("help.short", "도움말 표시 ('--help'으로 자세히)"),
+        ("help.long", "도움말 표시 ('-h'로 요약)"),
+        ("version.short", "버전 표시"),
+        ("help.subcommand", "이 메시지 또는 하위 명령의 도움말 표시"),
 
         ("cmd.health", "Deck App 연결 상태 확인"),
         ("cmd.write", "Deck 클립보드에 텍스트 쓰기"),
@@ -438,9 +469,14 @@ fn ko() -> Map {
 
 fn zh_hant() -> Map {
     HashMap::from([
-        ("cli.about", "DeckClip — Deck 剪貼簿管理工具的命令列介面"),
-        ("cli.long_about", "DeckClip — Deck 剪貼簿管理工具的命令列介面\n\nAI Agent 可直接呼叫上述指令操作 Deck 剪貼簿。\n詳細用法: deckclip <command> --help"),
-        ("arg.json", "所有輸出使用 JSON 格式（適用於程式呼叫）"),
+        ("cli.about", "\u{1b}]8;;https://deckclip.app/zh-cn\u{1b}\\DeckClip@Deck\u{1b}]8;;\u{1b}\\"),
+        ("cli.long_about", "\u{1b}]8;;https://deckclip.app/zh-cn\u{1b}\\DeckClip@Deck\u{1b}]8;;\u{1b}\\\n\nAI Agent 可直接呼叫指令操作 Deck 剪貼簿。\n詳細用法: deckclip <command> --help"),
+        ("arg.json", "使用 JSON 格式輸出"),
+
+        ("help.short", "顯示說明（使用 '--help' 檢視更多）"),
+        ("help.long", "顯示說明（使用 '-h' 檢視摘要）"),
+        ("version.short", "顯示版本"),
+        ("help.subcommand", "顯示此訊息或子指令的說明"),
 
         ("cmd.health", "檢查 Deck App 連線狀態"),
         ("cmd.write", "寫入文字到 Deck 剪貼簿"),
