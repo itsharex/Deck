@@ -78,4 +78,11 @@ pub mod cmd {
     pub const AI_RUN: &str = "ai.run";
     pub const AI_SEARCH: &str = "ai.search";
     pub const AI_TRANSFORM: &str = "ai.transform";
+    pub const LOGIN_STATUS: &str = "login.status";
+    pub const LOGIN_CLEAR: &str = "login.clear";
+    pub const LOGIN_CHATGPT_START: &str = "login.chatgpt.start";
+    pub const LOGIN_CHATGPT_CANCEL: &str = "login.chatgpt.cancel";
+    pub const LOGIN_OPENAI_CONFIGURE: &str = "login.openai.configure";
+    pub const LOGIN_ANTHROPIC_CONFIGURE: &str = "login.anthropic.configure";
+    pub const LOGIN_OLLAMA_CONFIGURE: &str = "login.ollama.configure";
 }

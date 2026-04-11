@@ -82,11 +82,27 @@ deckclip --json <command>
 | `write` | 写入文本到 Deck | `echo "text" \| deckclip write` |
 | `paste` | 粘贴面板项 `1-9` | `deckclip paste 1 --plain` |
 | `panel toggle` | 切换 Deck 面板显示状态 | `deckclip panel toggle` |
+| `login` | 打开交互式 AI 登录/配置页面 | `deckclip login` |
 | `ai run` | 运行 AI 处理，可选保存结果 | `deckclip ai run "总结这段内容" --text "..." --save` |
 | `ai search` | 搜索剪贴板历史 | `deckclip ai search "合同" --limit 5` |
 | `ai transform` | 执行 AI 文本转换 | `deckclip ai transform "翻译成英文" --text "你好"` |
 | `completion` | 生成 shell 补全脚本 | `deckclip completion zsh` |
 | `version` | 输出版本信息 | `deckclip version` |
+
+### AI 登录与配置
+
+```bash
+deckclip login
+```
+
+该命令会进入交互式终端页面，始终展示以下四种方式：
+
+- `Sign in with ChatGPT`
+- `Provide your own OpenAI API key`
+- `Provide your own Anthropic API key`
+- `Use Ollama`
+
+如果所选方式当前已有配置，DeckClip 会先提示确认；确认后会清空旧配置，再继续登录或重新填写参数。ChatGPT 流程会自动打开浏览器，并支持 `ESC` 取消退出。
 
 ### 写入文本
 

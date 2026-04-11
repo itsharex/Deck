@@ -44,6 +44,9 @@ pub enum Commands {
     /// AI 功能 (运行/搜索/转换)
     Ai(AiCommand),
 
+    /// 配置 AI 登录与模型提供商
+    Login,
+
     /// 生成 shell 补全脚本
     Completion {
         /// Shell 类型

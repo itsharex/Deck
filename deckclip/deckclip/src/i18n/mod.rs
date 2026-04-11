@@ -40,8 +40,8 @@ fn detect_macos_locale() -> String {
 
     // Read Deck App's locale file — the single source of truth
     if let Some(home) = std::env::var_os("HOME") {
-        let locale_path = std::path::PathBuf::from(home)
-            .join("Library/Application Support/Deck/deckclip_locale");
+        let locale_path =
+            std::path::PathBuf::from(home).join("Library/Application Support/Deck/deckclip_locale");
         if let Ok(content) = std::fs::read_to_string(&locale_path) {
             let trimmed = content.trim();
             if let Some(lang) = map_to_supported_locale(trimmed) {

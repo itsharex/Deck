@@ -1,6 +1,7 @@
 pub mod ai;
 pub mod completion;
 pub mod health;
+pub mod login;
 pub mod panel;
 pub mod paste;
 pub mod read;

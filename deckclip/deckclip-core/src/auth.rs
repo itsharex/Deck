@@ -17,9 +17,9 @@ pub async fn read_token(path: &Path) -> Result<String, DeckError> {
             path: path.display().to_string(),
         });
     }
-    let content = fs::read_to_string(path).await.map_err(|e| {
-        DeckError::Auth(format!("无法读取 token 文件 {}: {}", path.display(), e))
-    })?;
+    let content = fs::read_to_string(path)
+        .await
+        .map_err(|e| DeckError::Auth(format!("无法读取 token 文件 {}: {}", path.display(), e)))?;
     let token = content.trim().to_string();
     if token.is_empty() {
         return Err(DeckError::Auth("token 文件为空".into()));

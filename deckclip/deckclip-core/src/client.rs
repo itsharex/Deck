@@ -35,9 +35,7 @@ impl DeckClient {
         let now = current_timestamp();
 
         // If we have a valid session, check if transport is still alive
-        if self.transport.is_some()
-            && self.session_token.is_some()
-            && now < self.session_expires_at
+        if self.transport.is_some() && self.session_token.is_some() && now < self.session_expires_at
         {
             return Ok(());
         }
@@ -70,14 +68,22 @@ impl DeckClient {
 
         self.session_token = auth_resp.session_token;
         self.session_expires_at = auth_resp.expires_at.unwrap_or(0);
-        debug!("authenticated, session expires at {}", self.session_expires_at);
+        debug!(
+            "authenticated, session expires at {}",
+            self.session_expires_at
+        );
 
         Ok(())
     }
 
     /// Send a command and wait for the response.
     /// `timeout_ms` overrides the default timeout. Use `0` for no timeout.
-    async fn execute(&mut self, cmd: &str, args: Value, timeout_ms: u64) -> Result<Response, DeckError> {
+    async fn execute(
+        &mut self,
+        cmd: &str,
+        args: Value,
+        timeout_ms: u64,
+    ) -> Result<Response, DeckError> {
         self.ensure_connected().await?;
 
         let session_key = self
@@ -141,11 +147,13 @@ impl DeckClient {
     // ─── Public API ───
 
     pub async fn health(&mut self) -> Result<Response, DeckError> {
-        self.execute(deckclip_protocol::cmd::HEALTH, json!({}), 0).await
+        self.execute(deckclip_protocol::cmd::HEALTH, json!({}), 0)
+            .await
     }
 
     pub async fn read(&mut self) -> Result<Response, DeckError> {
-        self.execute(deckclip_protocol::cmd::READ, json!({}), 0).await
+        self.execute(deckclip_protocol::cmd::READ, json!({}), 0)
+            .await
     }
 
     pub async fn write(
@@ -223,7 +231,8 @@ impl DeckClient {
         if let Some(l) = limit {
             args["limit"] = json!(l);
         }
-        self.execute(deckclip_protocol::cmd::AI_SEARCH, args, 0).await
+        self.execute(deckclip_protocol::cmd::AI_SEARCH, args, 0)
+            .await
     }
 
     pub async fn ai_transform(
@@ -241,5 +250,81 @@ impl DeckClient {
         }
         self.execute(deckclip_protocol::cmd::AI_TRANSFORM, args, 0)
             .await
+    }
+
+    pub async fn login_status(&mut self) -> Result<Response, DeckError> {
+        self.execute(deckclip_protocol::cmd::LOGIN_STATUS, json!({}), 0)
+            .await
+    }
+
+    pub async fn login_clear(&mut self, provider: &str) -> Result<Response, DeckError> {
+        self.execute(
+            deckclip_protocol::cmd::LOGIN_CLEAR,
+            json!({ "provider": provider }),
+            0,
+        )
+        .await
+    }
+
+    pub async fn login_chatgpt_start(&mut self) -> Result<Response, DeckError> {
+        self.execute(deckclip_protocol::cmd::LOGIN_CHATGPT_START, json!({}), 0)
+            .await
+    }
+
+    pub async fn login_chatgpt_cancel(&mut self) -> Result<Response, DeckError> {
+        self.execute(deckclip_protocol::cmd::LOGIN_CHATGPT_CANCEL, json!({}), 0)
+            .await
+    }
+
+    pub async fn login_openai_configure(
+        &mut self,
+        base_url: &str,
+        model: &str,
+        api_key: &str,
+    ) -> Result<Response, DeckError> {
+        self.execute(
+            deckclip_protocol::cmd::LOGIN_OPENAI_CONFIGURE,
+            json!({
+                "base_url": base_url,
+                "model": model,
+                "api_key": api_key,
+            }),
+            0,
+        )
+        .await
+    }
+
+    pub async fn login_anthropic_configure(
+        &mut self,
+        base_url: &str,
+        model: &str,
+        api_key: &str,
+    ) -> Result<Response, DeckError> {
+        self.execute(
+            deckclip_protocol::cmd::LOGIN_ANTHROPIC_CONFIGURE,
+            json!({
+                "base_url": base_url,
+                "model": model,
+                "api_key": api_key,
+            }),
+            0,
+        )
+        .await
+    }
+
+    pub async fn login_ollama_configure(
+        &mut self,
+        base_url: &str,
+        model: &str,
+    ) -> Result<Response, DeckError> {
+        self.execute(
+            deckclip_protocol::cmd::LOGIN_OLLAMA_CONFIGURE,
+            json!({
+                "base_url": base_url,
+                "model": model,
+            }),
+            0,
+        )
+        .await
     }
 }

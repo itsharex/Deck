@@ -54,10 +54,7 @@ impl OutputMode {
         match self {
             OutputMode::Text => eprintln!("{} {}", "error:".red().bold(), err),
             OutputMode::Json => {
-                eprintln!(
-                    "{}",
-                    json!({ "ok": false, "error": err.to_string() })
-                );
+                eprintln!("{}", json!({ "ok": false, "error": err.to_string() }));
             }
         }
     }

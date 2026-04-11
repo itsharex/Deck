@@ -130,6 +130,7 @@ fn localize_command(cmd: clap::Command) -> clap::Command {
             s.about(t("cmd.panel"))
                 .mut_subcommand("toggle", |ss| ss.about(t("cmd.panel.toggle")))
         })
+        .mut_subcommand("login", |s| s.about(t("cmd.login")))
         .mut_subcommand("ai", |s| {
             s.about(t("cmd.ai"))
                 .mut_subcommand("run", |ss| {
@@ -167,6 +168,7 @@ async fn run(command: Commands, client: &mut DeckClient, output: OutputMode) -> 
         Commands::Paste(args) => commands::paste::run(client, output, args).await,
         Commands::Panel { action } => commands::panel::run(client, output, action).await,
         Commands::Ai(sub) => commands::ai::run(client, output, sub).await,
+        Commands::Login => commands::login::run(output).await,
         Commands::Completion { shell } => {
             commands::completion::run(shell);
             Ok(())
