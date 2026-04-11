@@ -45,15 +45,16 @@ pub fn current_timestamp() -> u64 {
 
 /// Compute HMAC-SHA256 signature for a request.
 ///
-/// Signing material: `{timestamp}|{nonce}|{body}`
-pub fn sign_request(session_key: &str, timestamp: u64, nonce: &str, body: &[u8]) -> String {
+/// Signing material: `{timestamp}|{nonce}|{cmd}`
+/// Args are NOT included to avoid cross-language JSON serialization order mismatch.
+pub fn sign_request(session_key: &str, timestamp: u64, nonce: &str, cmd: &str) -> String {
     let mut mac =
         HmacSha256::new_from_slice(session_key.as_bytes()).expect("HMAC key can be any length");
     mac.update(timestamp.to_string().as_bytes());
     mac.update(b"|");
     mac.update(nonce.as_bytes());
     mac.update(b"|");
-    mac.update(body);
+    mac.update(cmd.as_bytes());
     hex::encode(mac.finalize().into_bytes())
 }
 
@@ -69,15 +70,15 @@ mod tests {
 
     #[test]
     fn sign_deterministic() {
-        let sig1 = sign_request("secret", 1000, "abc", b"hello");
-        let sig2 = sign_request("secret", 1000, "abc", b"hello");
+        let sig1 = sign_request("secret", 1000, "abc", "health");
+        let sig2 = sign_request("secret", 1000, "abc", "health");
         assert_eq!(sig1, sig2);
     }
 
     #[test]
     fn sign_differs_on_nonce() {
-        let sig1 = sign_request("secret", 1000, "aaa", b"hello");
-        let sig2 = sign_request("secret", 1000, "bbb", b"hello");
+        let sig1 = sign_request("secret", 1000, "aaa", "health");
+        let sig2 = sign_request("secret", 1000, "bbb", "health");
         assert_ne!(sig1, sig2);
     }
 }

@@ -70,7 +70,7 @@ pub fn read_text_or_stdin(text: Option<String>) -> anyhow::Result<String> {
         None => {
             use std::io::{IsTerminal, Read};
             if std::io::stdin().is_terminal() {
-                anyhow::bail!("请提供文本参数，或通过管道传入 (如: echo \"text\" | deckclip write)");
+                anyhow::bail!("{}", crate::i18n::t("err.stdin_hint"));
             }
             let mut buf = String::new();
             std::io::stdin().read_to_string(&mut buf)?;

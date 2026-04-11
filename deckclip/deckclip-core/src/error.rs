@@ -2,7 +2,7 @@ use thiserror::Error;
 
 #[derive(Debug, Error)]
 pub enum DeckError {
-    #[error("Deck App 未运行或未启用 CLI Bridge")]
+    #[error("Deck App 未运行或未启用 Deck CLI")]
     NotRunning,
 
     #[error("连接失败: {0}")]

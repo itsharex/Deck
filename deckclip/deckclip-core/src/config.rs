@@ -30,7 +30,7 @@ impl Default for Config {
         Self {
             socket_path: default_socket_path(),
             token_path: default_token_path(),
-            timeout_ms: 5000,
+            timeout_ms: 0, // No client-side timeout; backend controls request lifecycle
         }
     }
 }

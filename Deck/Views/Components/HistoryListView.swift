@@ -247,11 +247,6 @@ struct HistoryListView: View {
             Text(NSLocalizedString("正在载入最近记录", comment: "History loading title"))
                 .font(.system(size: 13, weight: .medium))
                 .foregroundStyle(.secondary)
-
-            Text(NSLocalizedString("先显示缓存，再同步最新内容", comment: "History loading subtitle"))
-                .font(.system(size: 11))
-                .foregroundStyle(.tertiary)
-                .multilineTextAlignment(.center)
         }
         .padding(.horizontal, Const.space12)
         .frame(maxWidth: .infinity, maxHeight: .infinity)

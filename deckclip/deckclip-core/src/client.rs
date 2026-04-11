@@ -76,7 +76,8 @@ impl DeckClient {
     }
 
     /// Send a command and wait for the response.
-    async fn execute(&mut self, cmd: &str, args: Value) -> Result<Response, DeckError> {
+    /// `timeout_ms` overrides the default timeout. Use `0` for no timeout.
+    async fn execute(&mut self, cmd: &str, args: Value, timeout_ms: u64) -> Result<Response, DeckError> {
         self.ensure_connected().await?;
 
         let session_key = self
@@ -87,8 +88,7 @@ impl DeckClient {
         let id = Uuid::new_v4().to_string();
         let ts = current_timestamp();
         let nonce = generate_nonce();
-        let body = serde_json::to_vec(&args).unwrap_or_default();
-        let sig = sign_request(session_key, ts, &nonce, &body);
+        let sig = sign_request(session_key, ts, &nonce, cmd);
 
         let request = Request {
             v: PROTOCOL_VERSION,
@@ -103,10 +103,21 @@ impl DeckClient {
         let transport = self.transport.as_mut().ok_or(DeckError::NotRunning)?;
         transport.send(&request).await?;
 
-        let duration = Duration::from_millis(self.config.timeout_ms);
-        let response: Response = timeout(duration, transport.recv())
-            .await
-            .map_err(|_| DeckError::Timeout)??;
+        let effective_timeout = if timeout_ms > 0 {
+            timeout_ms
+        } else {
+            self.config.timeout_ms
+        };
+
+        let response: Response = if effective_timeout > 0 {
+            let duration = Duration::from_millis(effective_timeout);
+            timeout(duration, transport.recv())
+                .await
+                .map_err(|_| DeckError::Timeout)??
+        } else {
+            // No timeout — wait indefinitely (for AI/long operations)
+            transport.recv().await?
+        };
 
         if response.id != id {
             return Err(DeckError::Protocol(format!(
@@ -130,11 +141,11 @@ impl DeckClient {
     // ─── Public API ───
 
     pub async fn health(&mut self) -> Result<Response, DeckError> {
-        self.execute(deckclip_protocol::cmd::HEALTH, json!({})).await
+        self.execute(deckclip_protocol::cmd::HEALTH, json!({}), 0).await
     }
 
     pub async fn read(&mut self) -> Result<Response, DeckError> {
-        self.execute(deckclip_protocol::cmd::READ, json!({})).await
+        self.execute(deckclip_protocol::cmd::READ, json!({}), 0).await
     }
 
     pub async fn write(
@@ -154,7 +165,7 @@ impl DeckClient {
         if raw {
             args["raw"] = json!(true);
         }
-        self.execute(deckclip_protocol::cmd::WRITE, args).await
+        self.execute(deckclip_protocol::cmd::WRITE, args, 0).await
     }
 
     pub async fn paste(
@@ -170,11 +181,11 @@ impl DeckClient {
         if let Some(t) = target {
             args["target"] = json!(t);
         }
-        self.execute(deckclip_protocol::cmd::PASTE, args).await
+        self.execute(deckclip_protocol::cmd::PASTE, args, 0).await
     }
 
     pub async fn panel_toggle(&mut self) -> Result<Response, DeckError> {
-        self.execute(deckclip_protocol::cmd::PANEL_TOGGLE, json!({}))
+        self.execute(deckclip_protocol::cmd::PANEL_TOGGLE, json!({}), 0)
             .await
     }
 
@@ -195,7 +206,8 @@ impl DeckClient {
         if let Some(id) = tag_id {
             args["tagId"] = json!(id);
         }
-        self.execute(deckclip_protocol::cmd::AI_RUN, args).await
+        // AI commands: no client-side timeout (cloud computation can be slow)
+        self.execute(deckclip_protocol::cmd::AI_RUN, args, 0).await
     }
 
     pub async fn ai_search(
@@ -211,7 +223,7 @@ impl DeckClient {
         if let Some(l) = limit {
             args["limit"] = json!(l);
         }
-        self.execute(deckclip_protocol::cmd::AI_SEARCH, args).await
+        self.execute(deckclip_protocol::cmd::AI_SEARCH, args, 0).await
     }
 
     pub async fn ai_transform(
@@ -227,7 +239,7 @@ impl DeckClient {
         if let Some(p) = plugin {
             args["plugin"] = json!(p);
         }
-        self.execute(deckclip_protocol::cmd::AI_TRANSFORM, args)
+        self.execute(deckclip_protocol::cmd::AI_TRANSFORM, args, 0)
             .await
     }
 }
