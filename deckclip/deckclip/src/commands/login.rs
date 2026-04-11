@@ -61,7 +61,7 @@ impl ProviderKind {
 
     fn title(self) -> &'static str {
         match self {
-            ProviderKind::ChatGpt => "Sign in with ChatGPT",
+            ProviderKind::ChatGpt => "Sign in with ChatGPT (usage included with your ChatGPT Plan)",
             ProviderKind::OpenAI => "Provide your own OpenAI API key",
             ProviderKind::Anthropic => "Provide your own Anthropic API key",
             ProviderKind::Ollama => "Use Ollama",
@@ -72,9 +72,9 @@ impl ProviderKind {
         let mut text = match self {
             ProviderKind::ChatGpt => {
                 if let Some(account) = status.account.as_deref() {
-                    format!("Usage included with your ChatGPT plan. Current account: {account}")
+                    format!("使用 ChatGPT OAuth 授权。当前账号：{account}")
                 } else {
-                    "Usage included with your ChatGPT plan".to_string()
+                    "使用 ChatGPT OAuth 授权，在浏览器中完成登录".to_string()
                 }
             }
             ProviderKind::OpenAI => "通过 OpenAI API key 进行模型调用".to_string(),
@@ -798,12 +798,7 @@ fn render_menu(
     info: Option<&str>,
 ) -> Result<()> {
     screen.write_wrapped("", "", "配置 Deck AI 提供商", LineStyle::Bold)?;
-    screen.write_wrapped(
-        "",
-        "",
-        "为 Deck 选择或重新配置 AI 提供商。",
-        LineStyle::Plain,
-    )?;
+    screen.write_wrapped("", "", "为 Deck 选择并配置 AI 提供商。", LineStyle::Plain)?;
     screen.blank_line();
 
     for (index, provider) in ProviderKind::ALL.iter().enumerate() {
@@ -966,7 +961,7 @@ fn render_chatgpt_waiting(
     screen.write_wrapped(
         "",
         "",
-        "完成后 Deck 会自动切换到 ChatGPT。",
+        "完成后 Deck 会自动切换 Deck AI 到 ChatGPT 方案。",
         LineStyle::Plain,
     )?;
     if let Some(auth_url) = auth_url.filter(|value| !value.trim().is_empty()) {
