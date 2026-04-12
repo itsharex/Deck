@@ -54,7 +54,7 @@ impl OutputMode {
 
     /// Print an error.
     pub fn print_error(&self, err: &anyhow::Error) {
-        let message = localized_error_message(err);
+        let message = render_error_message(err);
         match self {
             OutputMode::Text => {
                 eprintln!("{} {}", i18n::t("label.error").red().bold(), message)
@@ -66,7 +66,7 @@ impl OutputMode {
     }
 }
 
-fn localized_error_message(err: &anyhow::Error) -> String {
+pub fn render_error_message(err: &anyhow::Error) -> String {
     if let Some(deck_err) = err.downcast_ref::<DeckError>() {
         return format_deck_error(deck_err);
     }

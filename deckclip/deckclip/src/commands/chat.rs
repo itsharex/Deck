@@ -29,7 +29,10 @@ use tokio::sync::mpsc::{unbounded_channel, UnboundedSender};
 use tokio::sync::Mutex;
 
 use crate::commands::login;
-use crate::{i18n, output::OutputMode};
+use crate::{
+    i18n,
+    output::{self, OutputMode},
+};
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -48,6 +51,10 @@ struct BootstrapData {
     provider: Option<String>,
     #[serde(default)]
     model: Option<String>,
+    #[serde(default)]
+    session_id: Option<String>,
+    #[serde(default)]
+    conversation_id: Option<String>,
     busy: Option<bool>,
 }
 
@@ -740,7 +747,18 @@ pub async fn run(output: OutputMode) -> Result<()> {
 
     let primary_client = Arc::new(Mutex::new(DeckClient::new(Config::default())));
     let bootstrap = ensure_bootstrapped(primary_client.clone()).await?;
+    let existing_session_id = bootstrap.session_id.clone();
+    let existing_conversation_id = bootstrap.conversation_id.clone();
     let mut app = ChatApp::from_bootstrap(bootstrap);
+    if let (Some(session_id), Some(conversation_id)) = (
+        existing_session_id.as_deref(),
+        existing_conversation_id.as_deref(),
+    ) {
+        let session =
+            load_history(primary_client.clone(), Some(session_id), conversation_id).await?;
+        handle_ui_event(&mut app, UiEvent::SessionAttached(session));
+        app.set_footer(chat_text("chat.footer.session_ready"), MetaTone::Info);
+    }
     let (ui_tx, mut ui_rx) = unbounded_channel();
     let mut terminal = TerminalGuard::enter()?;
 
@@ -811,7 +829,7 @@ fn handle_key_event(
                                 chat_text("chat.footer.tool_approved"),
                                 MetaTone::Info,
                             ),
-                            Err(error) => UiEvent::Error(error.to_string()),
+                            Err(error) => ui_error(error),
                         };
                         let _ = ui_tx.send(event);
                     });
@@ -828,7 +846,7 @@ fn handle_key_event(
                                 chat_text("chat.footer.tool_rejected"),
                                 MetaTone::Warning,
                             ),
-                            Err(error) => UiEvent::Error(error.to_string()),
+                            Err(error) => ui_error(error),
                         };
                         let _ = ui_tx.send(event);
                     });
@@ -896,7 +914,7 @@ fn handle_key_event(
                                     .await
                                 {
                                     Ok(session) => UiEvent::SessionOpened(session),
-                                    Err(error) => UiEvent::Error(error.to_string()),
+                                    Err(error) => ui_error(error),
                                 };
                             let _ = load_tx.send(event);
                         });
@@ -925,7 +943,7 @@ fn handle_key_event(
                             chat_text("chat.footer.interrupt_sent"),
                             MetaTone::Warning,
                         ),
-                        Err(error) => UiEvent::Error(error.to_string()),
+                        Err(error) => ui_error(error),
                     };
                     let _ = ui_tx.send(event);
                 });
@@ -1009,7 +1027,7 @@ fn handle_key_event(
                                 chat_text("chat.footer.stop_sent"),
                                 MetaTone::Warning,
                             ),
-                            Err(error) => UiEvent::Error(error.to_string()),
+                            Err(error) => ui_error(error),
                         };
                         let _ = ui_tx.send(event);
                     });
@@ -1091,7 +1109,7 @@ fn handle_key_event(
                             session_id
                         }
                         Err(error) => {
-                            let _ = ui_tx.send(UiEvent::Error(error.to_string()));
+                            let _ = ui_tx.send(ui_error(error));
                             return;
                         }
                     }
@@ -1104,7 +1122,7 @@ fn handle_key_event(
                         .await
                     {
                         Ok(()) => return,
-                        Err(error) => UiEvent::Error(error.to_string()),
+                        Err(error) => ui_error(error),
                     };
                 let _ = ui_tx.send(event);
             });
@@ -1253,7 +1271,7 @@ fn handle_slash_command(
                             data: history,
                             append: false,
                         },
-                        Err(error) => UiEvent::Error(error.to_string()),
+                        Err(error) => ui_error(error),
                     };
                 let _ = ui_tx.send(event);
             });
@@ -1280,7 +1298,7 @@ fn handle_slash_command(
             tokio::spawn(async move {
                 let event = match compact_session(primary_client, &session_id).await {
                     Ok(session) => UiEvent::SessionOpened(session),
-                    Err(error) => UiEvent::Error(error.to_string()),
+                    Err(error) => ui_error(error),
                 };
                 let _ = ui_tx.send(event);
             });
@@ -1442,7 +1460,7 @@ fn maybe_request_more_history(
                 data: history,
                 append: true,
             },
-            Err(error) => UiEvent::Error(error.to_string()),
+            Err(error) => ui_error(error),
         };
         let _ = ui_tx.send(event);
     });
@@ -1450,7 +1468,7 @@ fn maybe_request_more_history(
 
 async fn ensure_bootstrapped(client: Arc<Mutex<DeckClient>>) -> Result<BootstrapData> {
     let bootstrap = fetch_bootstrap(client.clone()).await?;
-    if bootstrap.busy == Some(true) {
+    if bootstrap.busy == Some(true) && !has_resumable_session(&bootstrap) {
         bail!(i18n::t("err.chat_busy"))
     }
     if bootstrap.configured {
@@ -1463,10 +1481,18 @@ async fn ensure_bootstrapped(client: Arc<Mutex<DeckClient>>) -> Result<Bootstrap
     if !bootstrap.configured {
         bail!(i18n::t("err.chat_provider_unconfigured"))
     }
-    if bootstrap.busy == Some(true) {
+    if bootstrap.busy == Some(true) && !has_resumable_session(&bootstrap) {
         bail!(i18n::t("err.chat_busy"))
     }
     Ok(bootstrap)
+}
+
+fn has_resumable_session(bootstrap: &BootstrapData) -> bool {
+    bootstrap.session_id.is_some() && bootstrap.conversation_id.is_some()
+}
+
+fn ui_error(error: anyhow::Error) -> UiEvent {
+    UiEvent::Error(output::render_error_message(&error))
 }
 
 async fn fetch_bootstrap(client: Arc<Mutex<DeckClient>>) -> Result<BootstrapData> {
