@@ -4,6 +4,111 @@
 
 <!-- release-changelog-bot:auto -->
 
+<!-- release-changelog-bot:tag:v1.4.0 -->
+## v1.4.0 — v1.4.0 | vinculum
+
+- **Tag:** `v1.4.0`
+- **Published:** 2026-04-12T11:43:43Z
+
+### Release notes
+
+<p align="center">
+  <a href="https://deckclip.app/download" rel="noopener noreferrer" target="_blank">
+    <img width="1525" height="896" alt="Deck" src="https://github.com/yuzeguitarist/Deck/raw/main/photos/Deck.webp" style="max-width: 100%; height: auto;" />
+  </a>
+</p>
+
+---
+
+## 更新说明 v1.4.0
+
+### 新增
+
+- **iOS 同步**  
+  在 Mac 设置中可开启局域网纯文本同步：通过「快捷指令」从 Mac **拉取**最近一条可下载文本到 iPhone，或将 iPhone 剪贴板**上传**到 Mac（写入剪贴板并降低重复入库）。  
+
+- **快捷指令配对**  
+  安装 Deck 提供的「Deck iOS 同步」快捷指令时，系统会**提示输入配对码一次**，之后长期有效。  
+
+- **AI 会话长上下文（加密 + 按需读取）**  
+  AI 助手新增 `save_session_context` / `read_session_context` / `delete_session_context`：每条记录为本地**独立加密文件**（YAML 头 + 长正文），每轮仅向模型注入**标题与源信息索引**；完整正文需通过工具读取，便于控 token。与「跨窗口记忆」（≤30 字短句、全文注入）互补；可在「AI 助手」设置中单独开关，并查看条数与清理过期条目。  
+
+- **Deck CLI（命令行控制）**  
+  在设置中启用「Deck CLI」后，`deckclip` 命令行工具通过 **Unix Domain Socket** 安全地控制面板、剪贴板与 AI 功能——零网络暴露、三层本地验证（二进制哈希 + Token + HMAC-SHA256）。App 启动时自动安装 `/usr/local/bin/deckclip`（或 `~/.local/bin`）。  
+
+- **支持的命令 / Supported commands**  
+  `deckclip health`：检查 App 连接状态。  
+  `deckclip write <text>`：写入剪贴板（支持 stdin 管道与 `--tag`）。  
+  `deckclip read`：读取最近一条剪贴板内容。  
+  `deckclip paste <1-9>`：按序号快速粘贴。  
+  `deckclip panel toggle`：显示/隐藏面板。  
+  `deckclip`（无参）：在交互式终端里直接进入 AI 聊天界面。  
+  `deckclip chat`：进入交互式 AI 聊天，走与 App 一致的真实会话流，并支持 `/cost`、`/compact`、`/copy`、`/resume`、`/clear`。  
+  `deckclip ai run <prompt>`：运行 AI 指令。  
+  `deckclip ai search <query>`：AI 语义搜索。  
+  `deckclip ai transform <prompt>`：AI 转换剪贴板内容。  
+  `deckclip completion <shell>`：生成 Shell 自动补全。  
+  `deckclip login`：在 CLI 中配置 Deck AI 提供商，包括 ChatGPT、OpenAI API、Anthropic API 与 Ollama。  
+  `deckclip version`：显示版本信息与 ASCII Art 图标。  
+  `deckclip mcp serve`：以前台 stdio 方式运行 Deck MCP bridge。  
+  `deckclip mcp tools`：列出首发 MCP tools 与参数。  
+  `deckclip mcp doctor`：检查 Deck App、本地 socket/token 与客户端配置路径。  
+  `deckclip mcp setup --client <claude-desktop|cursor|codex|opencode|all>`：输出或写入 MCP 客户端配置片段。  
+
+- **CLI 语言与输出 / CLI language and output**  
+  所有命令支持 `--json` 全局标志输出 JSON 格式，适合脚本与 AI Agent 集成。CLI 会自动跟随 App 语言（zh-Hans / zh-Hant / en / de / fr / ja / ko），包括所有 `--help` 与子命令帮助文本。  
+
+
+### 优化
+
+- **复制音效**  
+  复制到剪贴板时使用新的音效反馈，听感更清晰、与操作更一致。  
+
+- **AI 助手提供商图标**  
+  「AI 助手」设置里，各提供商选项旁显示对应的品牌图标；ChatGPT 订阅与 OpenAI API 使用同一枚 OpenAI 图标。  
+
+- **ChatGPT 订阅 · Codex 后端请求对齐**  
+  使用 ChatGPT 订阅时，对官方 Codex 接口的请求会携带与 OAuth 一致的客户端标识、结构化 User-Agent、账户与会话相关头字段，并在请求体中附带与对话一致的缓存键；带推理参数时与官方客户端同样请求加密的推理内容字段。  
+
+- **Smart Rule · AI 网页能力**  
+  智能规则触发的 AI 自动化现在可使用 `web_search` 与 `web_fetch`（与 AI 助手一致），便于按链接或关键词检索、抓取公开网页内容；仍仅作用于当前触发条目，不扩大其它剪贴板或本地文件权限。  
+
+- **sqlite-vec（语义向量索引）**  
+  嵌入式 **sqlite-vec** 升级至 **v0.1.9**（含 DELETE 与相关稳定性修复）；仍以静态 amalgamation 编译进应用，无需单独加载扩展。  
+
+- **AI 聊天面板性能与稳定性**  
+  流式输出时减少滚动视图重复解析；长回复累加器降低换行扫描与全文拼接开销；上下文用量估算合并短时重复触发；工具审批在切换会话、新建对话或关闭面板时正确收尾，避免挂起；长会话消息列表采用惰性布局以降低内存压力。  
+
+- **iCloud 同步（编译期开关 + 队列）**  
+  增加 **`DeckBuildFlags.isCloudSyncCompiledIn`**（默认关闭）：未打算开启 CloudKit 时不走同步、不创建 `CKContainer`、不派发后台同步任务；与 `UserDefaults` 双保险。启用后：`CKContainer` 改为不可变实例；待上传项先按 item id 合并再在 flush 前调用 `createRecord`，减少重复加密与临时文件；`syncItem` 与物化任务使用强引用，避免标志位卡死。  
+
+- **搜索与列表**  
+  清空搜索回到默认列表时，若已在默认态则**不再重复** `loadInitialData()`；模糊搜索在候选不足时先扫描行构建 **SearchSnapshot**、再对命中结果物化 `ClipboardItem`，降低主路径与内存峰值；编辑自定义标题时仅**按条失效**搜索预处理缓存，而非全量清空。  
+
+- **链接预览面板**  
+  顶部预览区拆为独立子视图；Apple 流媒体封面**文字对比色**按图像 TIFF 做缓存，减少重复像素采样。  
+
+- **邮件反馈（纯文本）**  
+  移除内置 HTML 工单模板，通过系统邮件撰写反馈时**正文改为纯文本**，便于在邮件客户端中直接编辑；仍自动附带 **Ticket**、来源与设备/应用诊断信息（并本地化提示文案）。  
+
+### 修复
+
+- **AI 聊天全局快捷键**  
+  聊天面板仍处于打开状态、但已切换到其它应用或 Deck 其它窗口时，快捷键会**前置并激活面板**，而不再被误判为「关闭」。再次在聊天已聚焦时按同一快捷键仍可收起。  
+
+- **AI 助手 · Anthropic 兼容接口**  
+  第三方文档若只给出不含 `/v1` 的基址（例如 MiniMax），Deck 会自动补全正确的 Messages 请求路径，避免误配导致的失败；设置中增加简要说明。  
+
+- **iOS 同步与快捷指令兼容性**  
+  修复 Swift 6 编译模式下 iOS 局域网同步、后台拉取与快捷指令导出相关的并发隔离问题，减少构建报错并提升同步稳定性。  
+
+- **CloudSync 与 SQLite 符号**  
+  `CloudSyncService` 引入 `import SQLite` 以读取 `fetchRow` 的 `id`；`Result` 与 SQLite 模块内类型冲突时显式使用 **`Swift.Result`**；物化任务由 `weak self` 改为强引用，避免 **`isMaterializingPendingSync` 永久为 true** 导致后续同步不再执行。
+
+### Assets
+
+- [`Deck.dmg`](https://github.com/yuzeguitarist/Deck/releases/download/v1.4.0/Deck.dmg)
+
 <!-- release-changelog-bot:tag:v1.3.9 -->
 ## v1.3.9 — v1.3.9 | artum
 

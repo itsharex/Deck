@@ -4,6 +4,91 @@ This file is auto-generated from GitHub Releases by [release-changelog-bot](.git
 
 <!-- release-changelog-bot:auto -->
 
+<!-- release-changelog-bot:tag:v1.4.0 -->
+## v1.4.0 — v1.4.0 | vinculum
+
+- **Tag:** `v1.4.0`
+- **Published:** 2026-04-12T11:43:43Z
+
+### Release notes
+
+<p align="center">
+  <a href="https://deckclip.app/download" rel="noopener noreferrer" target="_blank">
+    <img width="1525" height="896" alt="Deck" src="https://github.com/yuzeguitarist/Deck/raw/main/photos/Deck.webp" style="max-width: 100%; height: auto;" />
+  </a>
+</p>
+
+---
+
+## Release Notes v1.4.0
+
+### Added
+
+-   Turn on LAN plain-text sync in Mac settings: use Shortcuts to **pull** the latest downloadable text from your Mac to iPhone, or **push** the iPhone clipboard to the Mac (paste with safeguards against duplicate history entries).  
+
+-   When you install Deck’s **Deck iOS Sync** shortcut, you’ll be **prompted for a pairing code once**; it stays valid afterward.  
+
+-   The AI assistant adds **`save_session_context`**, **`read_session_context`**, and **`delete_session_context`**: each note is a **separate encrypted file on disk** (YAML front matter + long body); only **title + provenance** are injected each turn—load full text via tools to save tokens. Complements **cross-window memory** (≤30-char snippets, fully injected). Toggle per feature in **AI Assistant** settings, with counts and cleanup for expired entries.
+
+-   With **Deck CLI** enabled in Settings, the `deckclip` command-line tool securely drives panels, clipboard, and AI features via a **Unix Domain Socket** — zero network exposure, three-layer local authentication (binary hash + token + HMAC-SHA256). The app auto-installs `/usr/local/bin/deckclip` (or `~/.local/bin`) on launch.
+
+-   `deckclip health`: Check app connectivity.  
+  `deckclip write <text>`: Write to the clipboard (supports stdin pipes and `--tag`).  
+  `deckclip read`: Read the latest clipboard entry.  
+  `deckclip paste <1-9>`: Quick paste by slot.  
+  `deckclip panel toggle`: Toggle the panel.  
+  `deckclip` (no args): Open the AI chat directly when launched in an interactive terminal.  
+  `deckclip chat`: Enter the interactive AI chat with the same real conversation flow as the app, including `/cost`, `/compact`, `/copy`, `/resume`, and `/clear`.  
+  `deckclip ai run <prompt>`: Run an AI prompt.  
+  `deckclip ai search <query>`: AI semantic search.  
+  `deckclip ai transform <prompt>`: AI transform clipboard content.  
+  `deckclip completion <shell>`: Generate shell completions.  
+  `deckclip login`: Configure Deck AI providers directly in the CLI, including ChatGPT, OpenAI API, Anthropic API, and Ollama.  
+  `deckclip version`: Show version info with the ASCII art logo.
+  `deckclip mcp serve`: Run the Deck MCP bridge in foreground stdio mode.  
+  `deckclip mcp tools`: List the initial MCP tools and their arguments.  
+  `deckclip mcp doctor`: Check the Deck App, local socket/token, and client config paths.  
+  `deckclip mcp setup --client <claude-desktop|cursor|codex|opencode|all>`: Print or write MCP client config snippets.
+
+-   All commands support the global `--json` flag for JSON output, ideal for scripting and AI agent integration. The CLI automatically follows the app's language (zh-Hans / zh-Hant / en / de / fr / ja / ko), including all `--help` and subcommand help text.
+
+
+### Improvements
+
+-   Copy-to-clipboard now uses **new sound effects** for clearer, more consistent audio feedback.
+
+-   In **AI Assistant** settings, each provider shows its brand icon beside the label; ChatGPT subscription and OpenAI API use the same OpenAI mark.
+
+-   For **ChatGPT subscription**, requests to the Codex backend now include consistent client identity and structured `User-Agent`, account/session headers, and per-conversation cache keys aligned with the official flow; when reasoning is enabled, encrypted reasoning content is requested like the reference client.
+
+-   **Smart Rule** AI automation can now use **`web_search`** and **`web_fetch`** (same as the AI assistant) to look up or fetch public web content from URLs or keywords; scope stays limited to the triggering item without broader clipboard or local file access.
+
+-   Embedded **sqlite-vec** updated to **v0.1.9** (DELETE and related stability fixes); still built in as a **static amalgamation**, no separate loadable extension required.
+
+-   **AI chat panel** performance and stability: fewer redundant scroll-view resolves during streaming, cheaper newline scanning and full-text materialization in the accumulator, debounced context-usage estimates, safe teardown of tool-approval continuations when switching chats, starting a new chat, or closing the panel, and **lazy stacking** for long transcripts to reduce memory use.
+
+-   **iCloud sync (compile-time flag + pipeline)**: add **`DeckBuildFlags.isCloudSyncCompiledIn`** (default **off**) so CloudKit isn’t touched—no `CKContainer`, no background sync tasks—unless you opt in; works alongside `UserDefaults`. When enabled: immutable **`CKContainer`**, coalesce pending item IDs and **`createRecord` at flush time** to cut duplicate work, and **strong captures** in the materialization path so the in-flight flag can’t stick.
+
+-   **Search & list**: when returning to the default list, **skip redundant** `loadInitialData()` if already in the default state; when fuzzy search needs a wider scan, **scan lightweight `SearchSnapshot`s first** and materialize **`ClipboardItem` only for hits**; editing a custom title **invalidates that item’s cached text** instead of clearing the whole prepared-text cache.
+
+-   **Link preview**: split the top preview into a **subview**; **cache** adaptive text tone (dark/light) per image **TIFF** to avoid repeated luminance sampling.
+
+-   **Feedback email (plain text)**: removed bundled **HTML ticket templates**; composing feedback via the system mail UI now uses a **plain-text body** for easier editing across mail clients, while still auto-attaching **ticket ID**, source, and device/app diagnostics (with localized prompts).
+
+### Fixes
+
+-   When the AI chat panel stays open but you switch to another app or another Deck window, the global shortcut now **brings the panel forward and activates it** instead of hiding it. Press the shortcut again while the chat is focused to dismiss as before.
+
+-   When third-party docs only provide an Anthropic-compatible base URL without `/v1` (e.g. MiniMax), Deck now completes the correct Messages path so requests work; a short hint was added in settings.
+
+-   Fixed Swift 6 concurrency-isolation issues affecting iOS LAN sync, background fetches, and shortcut export, reducing build errors and improving sync stability.
+
+-   **CloudSync & SQLite symbols**: `CloudSyncService` now imports **SQLite** for row `id` subscripts; disambiguate with **`Swift.Result`** when the SQLite module shadows `Result`; materialization uses a **strong capture** so **`isMaterializingPendingSync` can’t get stuck** and block future sync work.
+
+### Assets
+
+- [`Deck.dmg`](https://github.com/yuzeguitarist/Deck/releases/download/v1.4.0/Deck.dmg)
+
 <!-- release-changelog-bot:tag:v1.3.9 -->
 ## v1.3.9 — v1.3.9 | artum
 
