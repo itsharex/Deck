@@ -913,10 +913,19 @@ impl ChatApp {
 
     fn clear_current_line(&mut self) {
         let (start, end) = current_line_bounds(&self.input, self.input_cursor);
-        let byte_start = byte_index_from_char(&self.input, start);
-        let byte_end = byte_index_from_char(&self.input, end);
-        self.input.replace_range(byte_start..byte_end, "");
-        self.input_cursor = start;
+        if start == end {
+            if start > 0 {
+                let newline_start = byte_index_from_char(&self.input, start - 1);
+                let newline_end = byte_index_from_char(&self.input, start);
+                self.input.replace_range(newline_start..newline_end, "");
+                self.input_cursor = start - 1;
+            }
+        } else {
+            let byte_start = byte_index_from_char(&self.input, start);
+            let byte_end = byte_index_from_char(&self.input, end);
+            self.input.replace_range(byte_start..byte_end, "");
+            self.input_cursor = start;
+        }
         self.input_history_index = None;
         self.refresh_slash_selection();
         self.clear_quit_hint();
@@ -3253,6 +3262,17 @@ mod tests {
         assert_eq!(app.input, "");
         assert!(app.footer_message.is_none());
         assert!(app.footer_tag.is_none());
+    }
+
+    #[test]
+    fn clear_current_line_on_blank_line_removes_previous_newline() {
+        let mut app = test_app();
+        app.set_input("hello\n\n".to_string());
+
+        app.clear_current_line();
+
+        assert_eq!(app.input, "hello\n");
+        assert_eq!(app.input_cursor, char_count("hello\n"));
     }
 
     #[test]
