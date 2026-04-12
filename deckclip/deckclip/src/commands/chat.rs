@@ -328,6 +328,7 @@ struct ChatApp {
     body_total_lines: usize,
     body_scrollbar_area: Option<Rect>,
     dragging_body_scrollbar: bool,
+    body_scrollbar_grab_offset: usize,
     created_at: Instant,
     quit_hint_until: Option<Instant>,
     should_quit: bool,
@@ -370,6 +371,7 @@ impl ChatApp {
             body_total_lines: 0,
             body_scrollbar_area: None,
             dragging_body_scrollbar: false,
+            body_scrollbar_grab_offset: 0,
             created_at: Instant::now(),
             quit_hint_until: None,
             should_quit: false,
@@ -634,6 +636,10 @@ impl ChatApp {
         self.body_scrollbar_area = scrollbar_area;
         self.body_visible_lines = visible_lines;
         self.body_total_lines = total_lines;
+        if scrollbar_area.is_none() || total_lines <= visible_lines {
+            self.dragging_body_scrollbar = false;
+            self.body_scrollbar_grab_offset = 0;
+        }
     }
 
     fn scroll_to_body_pointer(&mut self, row: u16) {
@@ -652,9 +658,22 @@ impl ChatApp {
         let relative_row = row
             .saturating_sub(area.y)
             .min(area.height.saturating_sub(1)) as usize;
-        let max_row = area.height.saturating_sub(1) as usize;
+        let (_thumb_top, thumb_height) = scrollbar_thumb_metrics(
+            self.body_total_lines,
+            self.body_visible_lines,
+            self.scroll,
+            area.height as usize,
+        );
+        let max_thumb_top = area.height.saturating_sub(thumb_height as u16) as usize;
+        let desired_thumb_top = relative_row
+            .saturating_sub(self.body_scrollbar_grab_offset)
+            .min(max_thumb_top);
         self.auto_scroll = false;
-        self.scroll = relative_row * max_scroll / max_row.max(1);
+        self.scroll = if max_thumb_top == 0 {
+            max_scroll
+        } else {
+            desired_thumb_top * max_scroll / max_thumb_top
+        };
         self.clear_quit_hint();
     }
 
@@ -665,7 +684,21 @@ impl ChatApp {
         if !point_in_rect(column, row, area) {
             return false;
         }
+
+        let relative_row = row.saturating_sub(area.y) as usize;
+        let (thumb_top, thumb_height) = scrollbar_thumb_metrics(
+            self.body_total_lines,
+            self.body_visible_lines,
+            self.scroll,
+            area.height as usize,
+        );
         self.dragging_body_scrollbar = true;
+        self.body_scrollbar_grab_offset =
+            if relative_row >= thumb_top && relative_row < thumb_top + thumb_height {
+                relative_row.saturating_sub(thumb_top)
+            } else {
+                thumb_height / 2
+            };
         self.scroll_to_body_pointer(row);
         true
     }
@@ -680,6 +713,7 @@ impl ChatApp {
 
     fn stop_body_scrollbar_drag(&mut self) {
         self.dragging_body_scrollbar = false;
+        self.body_scrollbar_grab_offset = 0;
     }
 
     fn move_cursor_to_pointer(&mut self, column: u16, row: u16) -> bool {
@@ -784,10 +818,6 @@ impl ChatApp {
     fn move_cursor_end(&mut self) {
         self.input_cursor = char_count(&self.input);
         self.clear_quit_hint();
-    }
-
-    fn is_multiline_input(&self) -> bool {
-        !self.input.is_empty()
     }
 
     fn move_cursor_up_line(&mut self) {
@@ -1281,17 +1311,17 @@ fn handle_key_event(
             app.scroll_down(8);
         }
         KeyCode::Up => {
-            if app.is_multiline_input() {
-                app.move_cursor_up_line();
-            } else {
+            if app.input_history_index.is_some() || app.input.is_empty() {
                 let _ = app.browse_input_history_up();
+            } else {
+                app.move_cursor_up_line();
             }
         }
         KeyCode::Down => {
-            if app.is_multiline_input() {
-                app.move_cursor_down_line();
-            } else {
+            if app.input_history_index.is_some() || app.input.is_empty() {
                 let _ = app.browse_input_history_down();
+            } else {
+                app.move_cursor_down_line();
             }
         }
         KeyCode::Home if key.modifiers.contains(KeyModifiers::CONTROL) => {
@@ -2611,6 +2641,14 @@ fn move_cursor_vertical(text: &str, cursor: usize, width: usize, delta: isize) -
         (layout.cursor_row + delta as usize).min(layout.rows.len().saturating_sub(1))
     };
 
+    if target_row == layout.cursor_row {
+        return if delta < 0 {
+            layout.rows[target_row].start_char
+        } else {
+            layout.rows[target_row].end_char
+        };
+    }
+
     cursor_from_visual_position(&layout, target_row, layout.cursor_col)
 }
 
@@ -2619,6 +2657,29 @@ fn point_in_rect(column: u16, row: u16, rect: Rect) -> bool {
         && column < rect.x.saturating_add(rect.width)
         && row >= rect.y
         && row < rect.y.saturating_add(rect.height)
+}
+
+fn scrollbar_thumb_metrics(
+    total_lines: usize,
+    visible_lines: usize,
+    scroll: usize,
+    track_height: usize,
+) -> (usize, usize) {
+    let total_lines = total_lines.max(1);
+    let visible_lines = visible_lines.max(1).min(total_lines);
+    let track_height = track_height.max(1);
+    let max_scroll = total_lines.saturating_sub(visible_lines);
+    let thumb_height =
+        ((visible_lines * track_height) + total_lines.saturating_sub(1)) / total_lines;
+    let thumb_height = thumb_height.clamp(1, track_height);
+    let max_thumb_top = track_height.saturating_sub(thumb_height);
+    let thumb_top = if max_scroll == 0 {
+        0
+    } else {
+        scroll.min(max_scroll) * max_thumb_top / max_scroll
+    };
+
+    (thumb_top, thumb_height)
 }
 
 fn render_scrollbar(
@@ -2640,15 +2701,8 @@ fn render_scrollbar(
         return;
     }
     let height = area.height as usize;
-    let max_scroll = total_lines.saturating_sub(visible_lines);
-    let thumb_height = ((visible_lines * height) + total_lines.saturating_sub(1)) / total_lines;
-    let thumb_height = thumb_height.clamp(1, height);
-    let max_thumb_top = height.saturating_sub(thumb_height);
-    let thumb_top = if max_scroll == 0 {
-        0
-    } else {
-        scroll.min(max_scroll) * max_thumb_top / max_scroll
-    };
+    let (thumb_top, thumb_height) =
+        scrollbar_thumb_metrics(total_lines, visible_lines, scroll, height);
 
     let lines: Vec<Line<'_>> = (0..height)
         .map(|row| {
