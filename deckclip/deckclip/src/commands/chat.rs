@@ -3840,6 +3840,8 @@ fn copy_to_system_clipboard(text: &str) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::hint::black_box;
+    use std::time::Instant;
 
     fn test_app() -> ChatApp {
         ChatApp::from_bootstrap(BootstrapData {
@@ -3861,6 +3863,120 @@ mod tests {
             ocr_text: Some("截图里的完整文字".to_string()),
             source_item_id: Some("test-item".to_string()),
         }
+    }
+
+    fn synthetic_text(target_bytes: usize) -> String {
+        const SEED: &str = "Deck benchmark mixed-width 文本 1234567890 ";
+        let mut text = String::with_capacity(target_bytes.max(SEED.len()));
+        while text.len() < target_bytes {
+            text.push_str(SEED);
+        }
+        while text.len() > target_bytes {
+            text.pop();
+        }
+        text
+    }
+
+    fn synthetic_transcript(entry_count: usize, bytes_per_entry: usize) -> Vec<TranscriptEntry> {
+        (0..entry_count)
+            .map(|index| {
+                let text = synthetic_text(bytes_per_entry);
+                if index % 2 == 0 {
+                    TranscriptEntry::User {
+                        text,
+                        attachments: Vec::new(),
+                    }
+                } else {
+                    TranscriptEntry::Assistant(text)
+                }
+            })
+            .collect()
+    }
+
+    fn env_usize(key: &str, default: usize) -> usize {
+        std::env::var(key)
+            .ok()
+            .and_then(|value| value.parse().ok())
+            .unwrap_or(default)
+    }
+
+    fn peak_rss_megabytes() -> Option<u64> {
+        let mut usage = std::mem::MaybeUninit::<libc::rusage>::zeroed();
+        let status = unsafe { libc::getrusage(libc::RUSAGE_SELF, usage.as_mut_ptr()) };
+        if status != 0 {
+            return None;
+        }
+
+        let usage = unsafe { usage.assume_init() };
+        #[cfg(target_os = "macos")]
+        let bytes = usage.ru_maxrss as u64;
+        #[cfg(not(target_os = "macos"))]
+        let bytes = (usage.ru_maxrss as u64) * 1024;
+        Some(bytes / (1024 * 1024))
+    }
+
+    #[test]
+    #[ignore = "run manually for performance metrics"]
+    fn chat_render_perf_report() {
+        let entry_count = env_usize("DECKCLIP_PERF_MESSAGES", 4_000);
+        let bytes_per_entry = env_usize("DECKCLIP_PERF_CHARS", 256);
+        let width = env_usize("DECKCLIP_PERF_WIDTH", 96);
+        let viewport_height = env_usize("DECKCLIP_PERF_VIEWPORT_HEIGHT", 24);
+        let cached_passes = env_usize("DECKCLIP_PERF_CACHED_PASSES", 1_000);
+        let slice_passes = env_usize("DECKCLIP_PERF_SLICE_PASSES", 2_000);
+        let stream_updates = env_usize("DECKCLIP_PERF_STREAM_DELTAS", 1_000);
+
+        let mut app = test_app();
+        app.conversation_entries = synthetic_transcript(entry_count, bytes_per_entry);
+        app.bump_transcript_revision();
+
+        let build_started = Instant::now();
+        let total_lines = black_box(app.transcript_lines(width).len());
+        let cold_build = build_started.elapsed();
+
+        let cached_started = Instant::now();
+        for _ in 0..cached_passes {
+            black_box(app.transcript_lines(width).len());
+        }
+        let cached_lookup = cached_started.elapsed();
+
+        let scroll = total_lines
+            .saturating_sub(viewport_height)
+            .saturating_div(2);
+        let visible_started = Instant::now();
+        for _ in 0..slice_passes {
+            let lines = app.transcript_lines(width);
+            let end = (scroll + viewport_height).min(lines.len());
+            black_box(lines[scroll..end].to_vec());
+        }
+        let visible_slice = visible_started.elapsed();
+
+        app.begin_send();
+        let delta = synthetic_text((bytes_per_entry / 4).max(32));
+        let stream_started = Instant::now();
+        for _ in 0..stream_updates {
+            app.streaming_text.push_str(&delta);
+            app.bump_streaming_revision();
+            black_box(app.transcript_lines(width).len());
+        }
+        let streaming_tail = stream_started.elapsed();
+
+        eprintln!(
+            "deckclip_chat_perf entries={} bytes_per_entry={} width={} total_lines={} cold_build_ms={:.2} cached_lookup_ms={:.2} visible_slice_ms={:.2} streaming_tail_ms={:.2} peak_rss_mb={}",
+            entry_count,
+            bytes_per_entry,
+            width,
+            total_lines,
+            cold_build.as_secs_f64() * 1000.0,
+            cached_lookup.as_secs_f64() * 1000.0,
+            visible_slice.as_secs_f64() * 1000.0,
+            streaming_tail.as_secs_f64() * 1000.0,
+            peak_rss_megabytes()
+                .map(|value| value.to_string())
+                .unwrap_or_else(|| "n/a".to_string()),
+        );
+
+        assert!(total_lines > 0);
     }
 
     #[test]
