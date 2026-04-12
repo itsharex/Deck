@@ -164,7 +164,9 @@ brew install --cask deckclip
 </p>
 
 <p align="center">
+  <a href="https://deckclip.app/zh-cn/support-development">
   <img src="photos/buy_me_a_coffee.webp" alt="微信/支付宝赞助收款码" width="420">
+  </a>
 </p>
 
 <p align="center">

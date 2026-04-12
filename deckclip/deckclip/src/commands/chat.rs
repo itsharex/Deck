@@ -44,6 +44,10 @@ struct ContextUsageData {
 struct BootstrapData {
     configured: bool,
     account: Option<String>,
+    #[serde(default)]
+    provider: Option<String>,
+    #[serde(default)]
+    model: Option<String>,
     busy: Option<bool>,
 }
 
@@ -183,6 +187,7 @@ enum ToolLifecycle {
 
 enum UiEvent {
     SessionOpened(SessionData),
+    SessionAttached(SessionData),
     ConversationUpdated(SessionData),
     AssistantDelta(String),
     ToolStarted(ToolEventData),
@@ -269,15 +274,15 @@ struct ChatApp {
 }
 
 impl ChatApp {
-    fn from_bootstrap(session: SessionData, account: Option<String>) -> Self {
-        let mut app = Self {
-            session_id: session.session_id.clone(),
-            conversation_id: session.conversation.id.clone(),
-            conversation_title: session.conversation.title.clone(),
-            provider: session.conversation.provider.clone(),
-            model: session.conversation.model.clone(),
-            account,
-            context_usage: session.context_usage.clone(),
+    fn from_bootstrap(bootstrap: BootstrapData) -> Self {
+        Self {
+            session_id: String::new(),
+            conversation_id: String::new(),
+            conversation_title: "新对话".to_string(),
+            provider: bootstrap.provider.unwrap_or_else(|| "AI".to_string()),
+            model: bootstrap.model.unwrap_or_else(|| "未开始".to_string()),
+            account: bootstrap.account,
+            context_usage: None,
             conversation_entries: Vec::new(),
             activities: Vec::new(),
             input: String::new(),
@@ -292,7 +297,7 @@ impl ChatApp {
             busy_action: None,
             busy_started_at: None,
             streaming_text: String::new(),
-            last_assistant_text: session.last_assistant_text.clone(),
+            last_assistant_text: None,
             tool_states: HashMap::new(),
             mode_started_at: None,
             auto_scroll: true,
@@ -300,9 +305,7 @@ impl ChatApp {
             created_at: Instant::now(),
             quit_hint_until: None,
             should_quit: false,
-        };
-        app.replace_session(session, true);
-        app
+        }
     }
 
     fn replace_session(&mut self, session: SessionData, clear_ephemeral: bool) {
@@ -475,6 +478,28 @@ impl ChatApp {
         self.input.clear();
         self.input_cursor = 0;
         self.slash_selected = 0;
+    }
+
+    fn has_session(&self) -> bool {
+        !self.session_id.is_empty()
+    }
+
+    fn reset_to_empty_conversation(&mut self) {
+        self.session_id.clear();
+        self.conversation_id.clear();
+        self.conversation_title = "新对话".to_string();
+        self.context_usage = None;
+        self.conversation_entries.clear();
+        self.activities.clear();
+        self.streaming_text.clear();
+        self.last_assistant_text = None;
+        self.overlay = OverlayState::None;
+        self.mode = ChatMode::Ready;
+        self.mode_started_at = None;
+        self.auto_scroll = true;
+        self.scroll = 0;
+        self.clear_busy_action();
+        self.clear_input();
     }
 
     fn set_input(&mut self, value: String) {
@@ -666,8 +691,7 @@ pub async fn run(output: OutputMode) -> Result<()> {
 
     let primary_client = Arc::new(Mutex::new(DeckClient::new(Config::default())));
     let bootstrap = ensure_bootstrapped(primary_client.clone()).await?;
-    let session = open_chat_session(primary_client.clone(), None, true).await?;
-    let mut app = ChatApp::from_bootstrap(session, bootstrap.account);
+    let mut app = ChatApp::from_bootstrap(bootstrap);
     let (ui_tx, mut ui_rx) = unbounded_channel();
     let mut terminal = TerminalGuard::enter()?;
 
@@ -699,7 +723,9 @@ pub async fn run(output: OutputMode) -> Result<()> {
         }
     }
 
-    let _ = close_chat_session(primary_client.clone(), &app.session_id).await;
+    if app.has_session() {
+        let _ = close_chat_session(primary_client.clone(), &app.session_id).await;
+    }
     Ok(())
 }
 
@@ -805,15 +831,21 @@ fn handle_key_event(
                     if let Some(item) = overlay.items.get(overlay.selected).cloned() {
                         app.overlay = OverlayState::None;
                         app.set_busy_action("正在恢复会话历史…");
-                        let session_id = app.session_id.clone();
+                        let session_id = if app.has_session() {
+                            Some(app.session_id.clone())
+                        } else {
+                            None
+                        };
                         let load_client = primary_client.clone();
                         let load_tx = ui_tx.clone();
                         tokio::spawn(async move {
-                            let event = match load_history(load_client, &session_id, &item.id).await
-                            {
-                                Ok(session) => UiEvent::SessionOpened(session),
-                                Err(error) => UiEvent::Error(error.to_string()),
-                            };
+                            let event =
+                                match load_history(load_client, session_id.as_deref(), &item.id)
+                                    .await
+                                {
+                                    Ok(session) => UiEvent::SessionOpened(session),
+                                    Err(error) => UiEvent::Error(error.to_string()),
+                                };
                             let _ = load_tx.send(event);
                         });
                     }
@@ -832,17 +864,22 @@ fn handle_key_event(
 
     if key.code == KeyCode::Char('c') && key.modifiers.contains(KeyModifiers::CONTROL) {
         if app.mode != ChatMode::Ready {
-            let session_id = app.session_id.clone();
-            app.set_footer("正在中断当前回复…", MetaTone::Warning);
-            tokio::spawn(async move {
-                let event = match cancel_stream(&session_id).await {
-                    Ok(()) => {
-                        UiEvent::FooterMessage("已发送中断请求。".to_string(), MetaTone::Warning)
-                    }
-                    Err(error) => UiEvent::Error(error.to_string()),
-                };
-                let _ = ui_tx.send(event);
-            });
+            if app.has_session() {
+                let session_id = app.session_id.clone();
+                app.set_footer("正在中断当前回复…", MetaTone::Warning);
+                tokio::spawn(async move {
+                    let event = match cancel_stream(&session_id).await {
+                        Ok(()) => UiEvent::FooterMessage(
+                            "已发送中断请求。".to_string(),
+                            MetaTone::Warning,
+                        ),
+                        Err(error) => UiEvent::Error(error.to_string()),
+                    };
+                    let _ = ui_tx.send(event);
+                });
+            } else {
+                app.set_footer("正在创建会话，请稍候…", MetaTone::Warning);
+            }
             return;
         }
 
@@ -905,18 +942,22 @@ fn handle_key_event(
                 app.clear_input();
                 app.set_footer("已取消 slash 命令输入。", MetaTone::Dim);
             } else if app.mode == ChatMode::Streaming || app.mode == ChatMode::AwaitingApproval {
-                let session_id = app.session_id.clone();
-                app.set_footer("正在停止当前回复…", MetaTone::Warning);
-                tokio::spawn(async move {
-                    let event = match cancel_stream(&session_id).await {
-                        Ok(()) => UiEvent::FooterMessage(
-                            "已发送停止请求。".to_string(),
-                            MetaTone::Warning,
-                        ),
-                        Err(error) => UiEvent::Error(error.to_string()),
-                    };
-                    let _ = ui_tx.send(event);
-                });
+                if app.has_session() {
+                    let session_id = app.session_id.clone();
+                    app.set_footer("正在停止当前回复…", MetaTone::Warning);
+                    tokio::spawn(async move {
+                        let event = match cancel_stream(&session_id).await {
+                            Ok(()) => UiEvent::FooterMessage(
+                                "已发送停止请求。".to_string(),
+                                MetaTone::Warning,
+                            ),
+                            Err(error) => UiEvent::Error(error.to_string()),
+                        };
+                        let _ = ui_tx.send(event);
+                    });
+                } else {
+                    app.set_footer("正在创建会话，请稍候…", MetaTone::Warning);
+                }
             } else {
                 app.should_quit = true;
             }
@@ -981,9 +1022,25 @@ fn handle_key_event(
                 return;
             }
 
-            let session_id = app.session_id.clone();
+            let existing_session_id = app.session_id.clone();
             app.begin_send();
             tokio::spawn(async move {
+                let session_id = if existing_session_id.is_empty() {
+                    match open_chat_session(primary_client.clone(), None, None, true).await {
+                        Ok(session) => {
+                            let session_id = session.session_id.clone();
+                            let _ = ui_tx.send(UiEvent::SessionAttached(session));
+                            session_id
+                        }
+                        Err(error) => {
+                            let _ = ui_tx.send(UiEvent::Error(error.to_string()));
+                            return;
+                        }
+                    }
+                } else {
+                    existing_session_id
+                };
+
                 let event =
                     match send_chat_message(primary_client, &session_id, submitted, ui_tx.clone())
                         .await
@@ -1089,15 +1146,27 @@ fn handle_slash_command(
                 return;
             }
 
-            app.set_busy_action("正在新建会话…");
-            let session_id = app.session_id.clone();
-            tokio::spawn(async move {
-                let event = match open_chat_session(primary_client, Some(&session_id), true).await {
-                    Ok(session) => UiEvent::SessionOpened(session),
-                    Err(error) => UiEvent::Error(error.to_string()),
-                };
-                let _ = ui_tx.send(event);
-            });
+            let session_id = if app.has_session() {
+                Some(app.session_id.clone())
+            } else {
+                None
+            };
+            app.reset_to_empty_conversation();
+            app.set_footer(
+                "已清空当前对话，下一条消息会创建新会话。",
+                MetaTone::Success,
+            );
+
+            if let Some(session_id) = session_id {
+                app.set_busy_action("正在清理当前会话…");
+                tokio::spawn(async move {
+                    let _ = close_chat_session(primary_client, &session_id).await;
+                    let _ = ui_tx.send(UiEvent::FooterMessage(
+                        "已准备新的空白对话。".to_string(),
+                        MetaTone::Success,
+                    ));
+                });
+            }
         }
         "/resume" => {
             if app.mode != ChatMode::Ready {
@@ -1124,6 +1193,11 @@ fn handle_slash_command(
                 return;
             }
 
+            if !app.has_session() {
+                app.set_footer("当前还没有可压缩的对话。", MetaTone::Warning);
+                return;
+            }
+
             app.set_busy_action("正在压缩上下文…");
             let session_id = app.session_id.clone();
             tokio::spawn(async move {
@@ -1144,6 +1218,9 @@ fn handle_ui_event(app: &mut ChatApp, event: UiEvent) {
             app.replace_session(session, true);
             app.clear_busy_action();
             app.set_footer("会话已就绪。", MetaTone::Success);
+        }
+        UiEvent::SessionAttached(session) => {
+            app.replace_session(session, false);
         }
         UiEvent::ConversationUpdated(session) => {
             app.conversation_updated(session);
@@ -1312,11 +1389,14 @@ async fn fetch_bootstrap(client: Arc<Mutex<DeckClient>>) -> Result<BootstrapData
 async fn open_chat_session(
     client: Arc<Mutex<DeckClient>>,
     session_id: Option<&str>,
+    conversation_id: Option<&str>,
     create_new: bool,
 ) -> Result<SessionData> {
     let response = {
         let mut client = client.lock().await;
-        client.chat_open(session_id, None, create_new).await?
+        client
+            .chat_open(session_id, conversation_id, create_new)
+            .await?
     };
     response_data(response)
 }
@@ -1336,16 +1416,10 @@ async fn list_history(
 
 async fn load_history(
     client: Arc<Mutex<DeckClient>>,
-    session_id: &str,
+    session_id: Option<&str>,
     conversation_id: &str,
 ) -> Result<SessionData> {
-    let response = {
-        let mut client = client.lock().await;
-        client
-            .chat_history_load(session_id, conversation_id)
-            .await?
-    };
-    response_data(response)
+    open_chat_session(client, session_id, Some(conversation_id), false).await
 }
 
 async fn compact_session(client: Arc<Mutex<DeckClient>>, session_id: &str) -> Result<SessionData> {

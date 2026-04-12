@@ -172,7 +172,9 @@ More shortcuts and Vim mode are in Settings.
 </p>
 
 <p align="center">
+  <a href="https://deckclip.app/zh-cn/support-development">
   <img src="photos/buy_me_a_coffee.webp" alt="WeChat Pay and Alipay QR code" width="320">
+  </a>
 </p>
 
 ## License

@@ -39,10 +39,22 @@ impl DeckClient {
     async fn ensure_connected(&mut self) -> Result<(), DeckError> {
         let now = current_timestamp();
 
-        // If we have a valid session, check if transport is still alive
+        // Reuse the current socket whenever possible so deckclip chat sessions
+        // stay attached to a single long-lived UDS connection.
         if self.transport.is_some() && self.session_token.is_some() && now < self.session_expires_at
         {
             return Ok(());
+        }
+
+        if self.transport.is_some() {
+            let token = auth::read_token(&self.config.token_path).await?;
+            if self.handshake(&token).await.is_ok() {
+                return Ok(());
+            }
+
+            self.transport = None;
+            self.session_token = None;
+            self.session_expires_at = 0;
         }
 
         // (Re)connect
