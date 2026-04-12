@@ -1220,7 +1220,7 @@ fn handle_key_event(
         return;
     }
 
-    if !app.slash_matches().is_empty() {
+    if !app.slash_matches().is_empty() && app.input_history_index.is_none() {
         match key.code {
             KeyCode::Up => {
                 app.select_previous_slash();
@@ -3023,6 +3023,18 @@ fn copy_to_system_clipboard(text: &str) -> Result<()> {
 mod tests {
     use super::*;
 
+    fn test_app() -> ChatApp {
+        ChatApp::from_bootstrap(BootstrapData {
+            configured: true,
+            account: None,
+            provider: Some("AI".to_string()),
+            model: Some("test".to_string()),
+            session_id: None,
+            conversation_id: None,
+            busy: Some(false),
+        })
+    }
+
     #[test]
     fn wrapped_input_layout_tracks_cjk_cursor_columns() {
         let layout = wrapped_input_layout("你好", 2, 12);
@@ -3044,5 +3056,21 @@ mod tests {
         assert_eq!(cursor_from_visual_position(&layout, 0, 0), 0);
         assert_eq!(cursor_from_visual_position(&layout, 0, 1), 1);
         assert_eq!(cursor_from_visual_position(&layout, 0, 4), 2);
+    }
+
+    #[test]
+    fn input_history_browses_multiple_entries_and_restores_draft() {
+        let mut app = test_app();
+        app.remember_input("你好");
+        app.remember_input("/cost");
+
+        assert!(app.browse_input_history_up());
+        assert_eq!(app.input, "/cost");
+        assert!(app.browse_input_history_up());
+        assert_eq!(app.input, "你好");
+        assert!(app.browse_input_history_down());
+        assert_eq!(app.input, "/cost");
+        assert!(app.browse_input_history_down());
+        assert_eq!(app.input, "");
     }
 }
