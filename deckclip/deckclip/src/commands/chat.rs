@@ -312,9 +312,8 @@ impl ModelEditorOverlay {
         self.error = Some(message);
     }
 
-    fn clear(&mut self) {
-        self.draft.clear();
-        self.cursor = 0;
+    fn delete_to_line_start(&mut self) {
+        delete_to_line_start_in_text(&mut self.draft, &mut self.cursor);
         self.clear_error();
     }
 
@@ -1239,21 +1238,8 @@ impl ChatApp {
         self.clear_quit_hint();
     }
 
-    fn clear_current_line(&mut self) {
-        let (start, end) = current_line_bounds(&self.input, self.input_cursor);
-        if start == end {
-            if start > 0 {
-                let newline_start = byte_index_from_char(&self.input, start - 1);
-                let newline_end = byte_index_from_char(&self.input, start);
-                self.input.replace_range(newline_start..newline_end, "");
-                self.input_cursor = start - 1;
-            }
-        } else {
-            let byte_start = byte_index_from_char(&self.input, start);
-            let byte_end = byte_index_from_char(&self.input, end);
-            self.input.replace_range(byte_start..byte_end, "");
-            self.input_cursor = start;
-        }
+    fn delete_to_line_start(&mut self) {
+        delete_to_line_start_in_text(&mut self.input, &mut self.input_cursor);
         self.input_history_index = None;
         self.refresh_slash_selection();
         self.clear_quit_hint();
@@ -1659,7 +1645,7 @@ fn handle_key_event(
                 }
                 KeyCode::Backspace => {
                     if key.modifiers.contains(KeyModifiers::SUPER) {
-                        overlay.clear();
+                        overlay.delete_to_line_start();
                         return;
                     }
                     overlay.clear_error();
@@ -1667,7 +1653,7 @@ fn handle_key_event(
                 }
                 KeyCode::Delete => {
                     if key.modifiers.contains(KeyModifiers::SUPER) {
-                        overlay.clear();
+                        overlay.delete_to_line_start();
                         return;
                     }
                     overlay.clear_error();
@@ -1686,7 +1672,7 @@ fn handle_key_event(
                     overlay.move_end();
                 }
                 KeyCode::Char('u') if key.modifiers.contains(KeyModifiers::CONTROL) => {
-                    overlay.clear();
+                    overlay.delete_to_line_start();
                 }
                 KeyCode::Char(ch)
                     if !key.modifiers.contains(KeyModifiers::CONTROL)
@@ -1854,7 +1840,7 @@ fn handle_key_event(
         KeyCode::End if key.modifiers.contains(KeyModifiers::CONTROL) => app.follow_output(),
         KeyCode::Backspace => {
             if key.modifiers.contains(KeyModifiers::SUPER) {
-                app.clear_current_line();
+                app.delete_to_line_start();
                 return;
             }
             if app.input.is_empty() && app.clear_pending_attachment() {
@@ -1864,11 +1850,11 @@ fn handle_key_event(
             app.backspace();
         }
         KeyCode::Char('u') if key.modifiers.contains(KeyModifiers::CONTROL) => {
-            app.clear_current_line();
+            app.delete_to_line_start();
         }
         KeyCode::Delete => {
             if key.modifiers.contains(KeyModifiers::SUPER) {
-                app.clear_current_line();
+                app.delete_to_line_start();
                 return;
             }
             if app.input.is_empty() && app.clear_pending_attachment() {
@@ -4065,6 +4051,18 @@ fn delete_before_cursor(text: &mut String, cursor: &mut usize) {
     *cursor = (*cursor).saturating_sub(1);
 }
 
+fn delete_to_line_start_in_text(text: &mut String, cursor: &mut usize) {
+    let (start, _) = current_line_bounds(text, *cursor);
+    if start == *cursor {
+        return;
+    }
+
+    let byte_start = byte_index_from_char(text, start);
+    let byte_end = byte_index_from_char(text, *cursor);
+    text.replace_range(byte_start..byte_end, "");
+    *cursor = start;
+}
+
 fn delete_at_cursor(text: &mut String, cursor: usize) {
     if cursor >= char_count(text) {
         return;
@@ -4484,7 +4482,7 @@ mod tests {
     }
 
     #[test]
-    fn clear_current_line_resets_slash_selected_footer() {
+    fn delete_to_line_start_resets_slash_selected_footer() {
         let mut app = test_app();
         app.set_input("/help".to_string());
         app.set_tagged_footer(
@@ -4496,7 +4494,7 @@ mod tests {
             FooterTag::SlashSelected,
         );
 
-        app.clear_current_line();
+        app.delete_to_line_start();
 
         assert_eq!(app.input, "");
         assert!(app.footer_message.is_none());
@@ -4504,14 +4502,26 @@ mod tests {
     }
 
     #[test]
-    fn clear_current_line_on_blank_line_removes_previous_newline() {
+    fn delete_to_line_start_only_removes_text_before_cursor() {
+        let mut app = test_app();
+        app.set_input("hello\nworld".to_string());
+        app.input_cursor = char_count("hello\nwo");
+
+        app.delete_to_line_start();
+
+        assert_eq!(app.input, "hello\nrld");
+        assert_eq!(app.input_cursor, char_count("hello\n"));
+    }
+
+    #[test]
+    fn delete_to_line_start_at_line_start_is_noop() {
         let mut app = test_app();
         app.set_input("hello\n\n".to_string());
 
-        app.clear_current_line();
+        app.delete_to_line_start();
 
-        assert_eq!(app.input, "hello\n");
-        assert_eq!(app.input_cursor, char_count("hello\n"));
+        assert_eq!(app.input, "hello\n\n");
+        assert_eq!(app.input_cursor, char_count("hello\n\n"));
     }
 
     #[test]
