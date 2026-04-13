@@ -267,10 +267,112 @@ enum FooterTag {
 }
 
 #[derive(Debug, Clone)]
+struct ApprovalSummaryItem {
+    label: String,
+    value: String,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ApprovalCodeMode {
+    Plain,
+    Diff,
+}
+
+#[derive(Debug, Clone)]
+enum ApprovalContentBlock {
+    Note {
+        title: String,
+        text: String,
+        tone: MetaTone,
+    },
+    List {
+        title: String,
+        items: Vec<String>,
+    },
+    Code {
+        title: String,
+        text: String,
+        mode: ApprovalCodeMode,
+    },
+}
+
+#[derive(Debug, Clone, Default)]
+struct ApprovalRenderCache {
+    width: usize,
+    lines: Vec<Line<'static>>,
+}
+
+#[derive(Debug, Clone)]
 struct ApprovalOverlay {
     call_id: String,
     tool: String,
-    preview: String,
+    title: String,
+    summary: Vec<ApprovalSummaryItem>,
+    content_blocks: Vec<ApprovalContentBlock>,
+    scroll: usize,
+    visible_lines: usize,
+    total_lines: usize,
+    render_cache: ApprovalRenderCache,
+}
+
+impl ApprovalOverlay {
+    fn from_tool(tool: &ToolEventData) -> Self {
+        let (title, summary, content_blocks) = approval_content(tool);
+        Self {
+            call_id: tool.call_id.clone(),
+            tool: tool.tool.clone(),
+            title,
+            summary,
+            content_blocks,
+            scroll: 0,
+            visible_lines: 0,
+            total_lines: 0,
+            render_cache: ApprovalRenderCache::default(),
+        }
+    }
+
+    fn content_lines(&mut self, width: usize) -> &[Line<'static>] {
+        let width = width.max(1);
+        if self.render_cache.width != width {
+            self.render_cache.width = width;
+            self.render_cache.lines = build_approval_content_lines(&self.content_blocks, width);
+        }
+        &self.render_cache.lines
+    }
+
+    fn update_viewport(&mut self, visible_lines: usize, total_lines: usize) {
+        self.visible_lines = visible_lines;
+        self.total_lines = total_lines;
+        self.scroll = self.scroll.min(self.max_scroll());
+    }
+
+    fn max_scroll(&self) -> usize {
+        self.total_lines.saturating_sub(self.visible_lines)
+    }
+
+    fn scroll_up(&mut self, lines: usize) {
+        self.scroll = self.scroll.saturating_sub(lines);
+    }
+
+    fn scroll_down(&mut self, lines: usize) {
+        self.scroll = (self.scroll + lines).min(self.max_scroll());
+    }
+
+    fn page_up(&mut self) {
+        self.scroll_up(self.visible_lines.saturating_sub(1).max(1));
+    }
+
+    fn page_down(&mut self) {
+        self.scroll_down(self.visible_lines.saturating_sub(1).max(1));
+    }
+
+    fn scroll_home(&mut self) {
+        self.scroll = 0;
+    }
+
+    fn scroll_end(&mut self) {
+        self.scroll = self.max_scroll();
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -1572,6 +1674,24 @@ fn handle_key_event(
             }
 
             match key.code {
+                KeyCode::Up | KeyCode::Char('k') => {
+                    overlay.scroll_up(1);
+                }
+                KeyCode::Down | KeyCode::Char('j') => {
+                    overlay.scroll_down(1);
+                }
+                KeyCode::PageUp => {
+                    overlay.page_up();
+                }
+                KeyCode::PageDown => {
+                    overlay.page_down();
+                }
+                KeyCode::Home => {
+                    overlay.scroll_home();
+                }
+                KeyCode::End => {
+                    overlay.scroll_end();
+                }
                 KeyCode::Char('Y') | KeyCode::Char('y') | KeyCode::Enter => {
                     let session_id = app.session_id.clone();
                     let call_id = overlay.call_id.clone();
@@ -2126,6 +2246,9 @@ fn handle_mouse_event(
                 }
                 app.clear_quit_hint();
             }
+            OverlayState::Approval(overlay) => {
+                overlay.scroll_up(3);
+            }
             OverlayState::None => {
                 if !app.slash_matches().is_empty() && app.input_history_index.is_none() {
                     app.select_previous_slash();
@@ -2134,7 +2257,7 @@ fn handle_mouse_event(
                     app.scroll_up(3);
                 }
             }
-            OverlayState::Approval(_) | OverlayState::ModelEditor(_) => {}
+            OverlayState::ModelEditor(_) => {}
         },
         MouseEventKind::ScrollDown => match &mut app.overlay {
             OverlayState::History(overlay) => {
@@ -2144,6 +2267,9 @@ fn handle_mouse_event(
                 app.clear_quit_hint();
                 maybe_request_more_history(app, primary_client, ui_tx);
             }
+            OverlayState::Approval(overlay) => {
+                overlay.scroll_down(3);
+            }
             OverlayState::None => {
                 if !app.slash_matches().is_empty() && app.input_history_index.is_none() {
                     app.select_next_slash();
@@ -2152,7 +2278,7 @@ fn handle_mouse_event(
                     app.scroll_down(3);
                 }
             }
-            OverlayState::Approval(_) | OverlayState::ModelEditor(_) => {}
+            OverlayState::ModelEditor(_) => {}
         },
         _ => {}
     }
@@ -2387,11 +2513,7 @@ fn handle_ui_event(app: &mut ChatApp, event: UiEvent) {
             if app.mode_started_at.is_none() {
                 app.mode_started_at = Some(Instant::now());
             }
-            app.set_overlay(OverlayState::Approval(ApprovalOverlay {
-                call_id: tool.call_id.clone(),
-                tool: tool.tool.clone(),
-                preview: approval_preview(&tool),
-            }));
+            app.set_overlay(OverlayState::Approval(ApprovalOverlay::from_tool(&tool)));
             app.set_footer(
                 chat_text("chat.footer.approval_required"),
                 MetaTone::Warning,
@@ -3037,33 +3159,105 @@ fn render_footer(frame: &mut Frame<'_>, area: Rect, app: &ChatApp) {
     frame.render_widget(Paragraph::new(line), area);
 }
 
-fn render_approval_overlay(frame: &mut Frame<'_>, area: Rect, overlay: &ApprovalOverlay) {
-    let popup = centered_rect(72, 42, area);
+fn render_approval_overlay(frame: &mut Frame<'_>, area: Rect, overlay: &mut ApprovalOverlay) {
+    let popup = approval_popup_rect(area);
     frame.render_widget(Clear, popup);
 
-    let text = vec![
+    let border_color = approval_border_color(&overlay.tool);
+    let block = Block::default()
+        .title(chat_text("chat.approval.title"))
+        .borders(Borders::ALL)
+        .border_style(Style::default().fg(border_color));
+    let inner = block.inner(popup);
+    frame.render_widget(block, popup);
+
+    if inner.width == 0 || inner.height == 0 {
+        return;
+    }
+
+    let summary_height = overlay.summary.len().clamp(1, 4) as u16;
+    let layout = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Length(2),
+            Constraint::Length(summary_height),
+            Constraint::Min(6),
+            Constraint::Length(1),
+        ])
+        .split(inner);
+
+    let header = vec![
         Line::from(Span::styled(
-            chat_format("chat.approval.needs", &[("{tool}", overlay.tool.clone())]),
+            overlay.title.clone(),
             Style::default()
-                .fg(Color::Yellow)
+                .fg(border_color)
                 .add_modifier(Modifier::BOLD),
         )),
-        Line::from(Span::raw("")),
-        Line::from(Span::raw(overlay.preview.clone())),
-        Line::from(Span::raw("")),
         Line::from(Span::styled(
-            chat_text("chat.approval.actions"),
+            chat_format("chat.approval.needs", &[("{tool}", overlay.tool.clone())]),
             Style::default().fg(Color::DarkGray),
         )),
     ];
+    frame.render_widget(Paragraph::new(header), layout[0]);
 
     frame.render_widget(
-        Paragraph::new(text).block(
-            Block::default()
-                .title(chat_text("chat.approval.title"))
-                .borders(Borders::ALL),
-        ),
-        popup,
+        Paragraph::new(approval_summary_lines(
+            &overlay.summary,
+            layout[1].width as usize,
+        )),
+        layout[1],
+    );
+
+    let preview_block = Block::default()
+        .title(" Preview ")
+        .borders(Borders::ALL)
+        .border_style(Style::default().fg(Color::DarkGray));
+    let preview_inner = preview_block.inner(layout[2]);
+    frame.render_widget(preview_block, layout[2]);
+
+    if preview_inner.width > 0 && preview_inner.height > 0 {
+        let preview_chunks = if preview_inner.width > 2 {
+            Layout::default()
+                .direction(Direction::Horizontal)
+                .constraints([Constraint::Min(1), Constraint::Length(1)])
+                .split(preview_inner)
+        } else {
+            Layout::default()
+                .direction(Direction::Horizontal)
+                .constraints([Constraint::Min(1)])
+                .split(preview_inner)
+        };
+
+        let content_area = preview_chunks[0];
+        let scrollbar_area = (preview_chunks.len() > 1).then_some(preview_chunks[1]);
+        let total_lines = overlay.content_lines(content_area.width as usize).len();
+        overlay.update_viewport(content_area.height as usize, total_lines);
+        let scroll = overlay.scroll.min(overlay.max_scroll());
+        overlay.scroll = scroll;
+        let visible_lines = {
+            let lines = overlay.content_lines(content_area.width as usize);
+            let end = (scroll + content_area.height as usize).min(lines.len());
+            lines[scroll..end].to_vec()
+        };
+
+        frame.render_widget(Paragraph::new(visible_lines), content_area);
+
+        if let Some(scrollbar_area) = scrollbar_area {
+            render_scrollbar(
+                frame,
+                scrollbar_area,
+                overlay.total_lines,
+                overlay.visible_lines,
+                overlay.scroll,
+                Color::DarkGray,
+                border_color,
+            );
+        }
+    }
+
+    frame.render_widget(
+        Paragraph::new(approval_footer_line(overlay, border_color)),
+        layout[3],
     );
 }
 
@@ -3999,6 +4193,24 @@ fn centered_rect(percent_x: u16, percent_y: u16, rect: Rect) -> Rect {
         .split(vertical[1])[1]
 }
 
+fn approval_popup_rect(area: Rect) -> Rect {
+    let max_width = area.width.saturating_sub(4).max(1);
+    let max_height = area.height.saturating_sub(3).max(1);
+    let preferred_width = (area.width.saturating_mul(58) / 100).max(52);
+    let preferred_height = (area.height.saturating_mul(62) / 100).max(18);
+    let width = preferred_width.min(78).min(max_width);
+    let height = preferred_height.min(26).min(max_height);
+    let x = area.x + area.width.saturating_sub(width + 2);
+    let y = area.y + area.height.saturating_sub(height + 1);
+
+    Rect {
+        x,
+        y,
+        width,
+        height,
+    }
+}
+
 struct SingleLineInputView {
     visible_text: String,
     cursor_col: usize,
@@ -4545,38 +4757,476 @@ fn tool_status_text(tool: &ToolEventData, search_call_count: usize) -> String {
     }
 }
 
-fn approval_preview(tool: &ToolEventData) -> String {
+fn approval_content(
+    tool: &ToolEventData,
+) -> (String, Vec<ApprovalSummaryItem>, Vec<ApprovalContentBlock>) {
     match tool.tool.as_str() {
-        "write_clipboard" => tool
-            .parameters
-            .get("text")
-            .and_then(Value::as_str)
-            .map(|text| {
-                chat_format(
-                    "chat.approval.write_text",
-                    &[("{text}", trim_preview(text, 600))],
+        "generate_script_plugin" => {
+            let plugin_name = approval_string_param(tool, "plugin_name")
+                .unwrap_or_else(|| "Untitled plugin".to_string());
+            let plugin_id =
+                approval_string_param(tool, "plugin_id").unwrap_or_else(|| "-".to_string());
+            let network = approval_bool_param(tool, "requires_network")
+                .map(|value| if value { "On" } else { "Off" })
+                .unwrap_or("Off");
+            let overwrite = approval_bool_param(tool, "overwrite")
+                .map(|value| if value { "Yes" } else { "No" })
+                .unwrap_or("No");
+            let manifest_json =
+                approval_string_param(tool, "manifest_json").unwrap_or_else(|| "{}".to_string());
+            let manifest = approval_pretty_json_string(&manifest_json).unwrap_or(manifest_json);
+            let main_file = approval_manifest_main_file(&manifest);
+            let script_code = approval_string_param(tool, "script_code")
+                .unwrap_or_else(|| chat_text("chat.approval.write_text_default"));
+
+            (
+                "Create script plugin".to_string(),
+                vec![
+                    approval_summary_item("Plugin", plugin_name),
+                    approval_summary_item("ID", plugin_id),
+                    approval_summary_item("Network", network),
+                    approval_summary_item("Overwrite", overwrite),
+                ],
+                vec![
+                    ApprovalContentBlock::Code {
+                        title: "manifest.json".to_string(),
+                        text: manifest,
+                        mode: ApprovalCodeMode::Plain,
+                    },
+                    ApprovalContentBlock::Code {
+                        title: main_file,
+                        text: script_code,
+                        mode: ApprovalCodeMode::Plain,
+                    },
+                ],
+            )
+        }
+        "modify_script_plugin" => {
+            let plugin_name = approval_string_param(tool, "plugin_name")
+                .unwrap_or_else(|| "Unknown plugin".to_string());
+            let plugin_id =
+                approval_string_param(tool, "plugin_id").unwrap_or_else(|| "-".to_string());
+            let touched_files = approval_string_array_param(tool, "touched_files");
+            let patch = approval_string_param(tool, "patch")
+                .or_else(|| approval_string_param(tool, "patch_preview"))
+                .unwrap_or_default();
+            let (file_count, added, removed) = approval_diff_stats(&patch);
+            let diff_summary = if patch.is_empty() {
+                format!("{} file(s)", touched_files.len())
+            } else {
+                format!(
+                    "{} file(s) · +{} -{}",
+                    file_count.max(touched_files.len()),
+                    added,
+                    removed
                 )
-            })
-            .unwrap_or_else(|| chat_text("chat.approval.write_text_default")),
-        "delete_clipboard" => tool
-            .parameters
-            .get("item_id")
-            .and_then(Value::as_i64)
-            .map(|id| chat_format("chat.approval.delete_item", &[("{id}", id.to_string())]))
-            .unwrap_or_else(|| chat_text("chat.approval.delete_default")),
-        _ => match serde_json::to_string_pretty(&tool.parameters) {
-            Ok(json) => trim_preview(&json, 800),
-            Err(_) => chat_text("chat.approval.generic"),
-        },
+            };
+            let mut content_blocks = Vec::new();
+            if !touched_files.is_empty() {
+                content_blocks.push(ApprovalContentBlock::List {
+                    title: "Files".to_string(),
+                    items: touched_files,
+                });
+            }
+            if !patch.is_empty() {
+                content_blocks.push(ApprovalContentBlock::Code {
+                    title: "Patch".to_string(),
+                    text: patch,
+                    mode: ApprovalCodeMode::Diff,
+                });
+            } else {
+                content_blocks.push(ApprovalContentBlock::Note {
+                    title: "Patch".to_string(),
+                    text: chat_text("chat.approval.generic"),
+                    tone: MetaTone::Dim,
+                });
+            }
+
+            (
+                "Review plugin diff".to_string(),
+                vec![
+                    approval_summary_item("Plugin", plugin_name),
+                    approval_summary_item("ID", plugin_id),
+                    approval_summary_item("Files", diff_summary),
+                ],
+                content_blocks,
+            )
+        }
+        "delete_script_plugin" => {
+            let plugin_name = approval_string_param(tool, "plugin_name")
+                .unwrap_or_else(|| "Unknown plugin".to_string());
+            let plugin_id =
+                approval_string_param(tool, "plugin_id").unwrap_or_else(|| "-".to_string());
+            let plugin_path =
+                approval_string_param(tool, "plugin_path").unwrap_or_else(|| "-".to_string());
+
+            (
+                "Delete script plugin".to_string(),
+                vec![
+                    approval_summary_item("Plugin", plugin_name),
+                    approval_summary_item("ID", plugin_id),
+                ],
+                vec![
+                    ApprovalContentBlock::Note {
+                        title: "Warning".to_string(),
+                        text: "This removes the whole plugin directory and cannot be undone."
+                            .to_string(),
+                        tone: MetaTone::Warning,
+                    },
+                    ApprovalContentBlock::Code {
+                        title: "Path".to_string(),
+                        text: plugin_path,
+                        mode: ApprovalCodeMode::Plain,
+                    },
+                ],
+            )
+        }
+        "run_script_transform" => {
+            let plugin_name = approval_string_param(tool, "plugin_name")
+                .unwrap_or_else(|| "Unknown plugin".to_string());
+            let plugin_id =
+                approval_string_param(tool, "plugin_id").unwrap_or_else(|| "-".to_string());
+            let input_preview = approval_string_param(tool, "input_preview")
+                .unwrap_or_else(|| chat_text("chat.approval.write_text_default"));
+
+            (
+                "Authorize plugin run".to_string(),
+                vec![
+                    approval_summary_item("Plugin", plugin_name),
+                    approval_summary_item("ID", plugin_id),
+                    approval_summary_item("Network", "Required"),
+                ],
+                vec![ApprovalContentBlock::Code {
+                    title: "Input".to_string(),
+                    text: input_preview,
+                    mode: ApprovalCodeMode::Plain,
+                }],
+            )
+        }
+        "generate_smart_rule" => {
+            let rule_name = approval_string_param(tool, "rule_name")
+                .unwrap_or_else(|| "Untitled rule".to_string());
+            let preview = tool
+                .parameters
+                .get("smart_rule_preview")
+                .map(approval_pretty_value)
+                .unwrap_or_else(|| approval_pretty_value(&tool.parameters));
+
+            (
+                "Create smart rule".to_string(),
+                vec![approval_summary_item("Rule", rule_name)],
+                vec![ApprovalContentBlock::Code {
+                    title: "Preview".to_string(),
+                    text: preview,
+                    mode: ApprovalCodeMode::Plain,
+                }],
+            )
+        }
+        "write_clipboard" => {
+            let text = approval_string_param(tool, "text")
+                .unwrap_or_else(|| chat_text("chat.approval.write_text_default"));
+
+            (
+                "Write clipboard text".to_string(),
+                vec![approval_summary_item(
+                    "Characters",
+                    char_count(&text).to_string(),
+                )],
+                vec![ApprovalContentBlock::Code {
+                    title: "Text".to_string(),
+                    text,
+                    mode: ApprovalCodeMode::Plain,
+                }],
+            )
+        }
+        "delete_clipboard" => {
+            let item_id = tool
+                .parameters
+                .get("item_id")
+                .and_then(Value::as_i64)
+                .map(|value| value.to_string())
+                .unwrap_or_else(|| "-".to_string());
+            let preview = approval_string_param(tool, "item_text")
+                .unwrap_or_else(|| chat_text("chat.approval.delete_default"));
+
+            (
+                "Delete clipboard item".to_string(),
+                vec![approval_summary_item("Item", item_id)],
+                vec![ApprovalContentBlock::Code {
+                    title: "Preview".to_string(),
+                    text: preview,
+                    mode: ApprovalCodeMode::Plain,
+                }],
+            )
+        }
+        _ => (
+            format!("Approve {}", tool.tool.replace('_', " ")),
+            vec![approval_summary_item("Tool", tool.tool.clone())],
+            vec![ApprovalContentBlock::Code {
+                title: "Parameters".to_string(),
+                text: approval_pretty_value(&tool.parameters),
+                mode: ApprovalCodeMode::Plain,
+            }],
+        ),
     }
 }
 
-fn trim_preview(text: &str, max_chars: usize) -> String {
-    let chars: Vec<char> = text.chars().collect();
-    if chars.len() <= max_chars {
-        return text.to_string();
+fn approval_summary_item(
+    label: impl Into<String>,
+    value: impl Into<String>,
+) -> ApprovalSummaryItem {
+    ApprovalSummaryItem {
+        label: label.into(),
+        value: value.into(),
     }
-    chars.into_iter().take(max_chars).collect::<String>() + "..."
+}
+
+fn approval_summary_lines(summary: &[ApprovalSummaryItem], width: usize) -> Vec<Line<'static>> {
+    if summary.is_empty() {
+        return vec![Line::from(Span::styled(
+            chat_text("chat.approval.generic"),
+            Style::default().fg(Color::DarkGray),
+        ))];
+    }
+
+    summary
+        .iter()
+        .take(4)
+        .map(|item| {
+            let label = format!("{}: ", item.label);
+            let value = truncate_text(
+                &item.value,
+                width.saturating_sub(display_width(&label)).max(1),
+            );
+            Line::from(vec![
+                Span::styled(label, Style::default().fg(Color::DarkGray)),
+                Span::styled(value, Style::default().add_modifier(Modifier::BOLD)),
+            ])
+        })
+        .collect()
+}
+
+fn approval_footer_line(overlay: &ApprovalOverlay, allow_color: Color) -> Line<'static> {
+    let scroll_state = if overlay.total_lines > overlay.visible_lines && overlay.visible_lines > 0 {
+        format!(
+            "{}-{} / {}",
+            overlay.scroll + 1,
+            (overlay.scroll + overlay.visible_lines).min(overlay.total_lines),
+            overlay.total_lines,
+        )
+    } else {
+        format!("{} line(s)", overlay.total_lines.max(1))
+    };
+
+    Line::from(vec![
+        Span::styled(
+            "Y approve",
+            Style::default()
+                .fg(allow_color)
+                .add_modifier(Modifier::BOLD),
+        ),
+        Span::raw("  "),
+        Span::styled(
+            "N reject",
+            Style::default().fg(Color::Red).add_modifier(Modifier::BOLD),
+        ),
+        Span::raw("  "),
+        Span::styled("Up/Down scroll", Style::default().fg(Color::DarkGray)),
+        Span::raw("  "),
+        Span::styled(scroll_state, Style::default().fg(Color::DarkGray)),
+    ])
+}
+
+fn approval_border_color(tool: &str) -> Color {
+    match tool {
+        "delete_clipboard" | "delete_script_plugin" => Color::Red,
+        "modify_script_plugin" => Color::Yellow,
+        "generate_script_plugin" | "generate_smart_rule" => Color::Cyan,
+        "write_clipboard" => Color::Green,
+        _ => Color::LightYellow,
+    }
+}
+
+fn build_approval_content_lines(
+    content_blocks: &[ApprovalContentBlock],
+    width: usize,
+) -> Vec<Line<'static>> {
+    let mut lines = Vec::new();
+
+    for (index, block) in content_blocks.iter().enumerate() {
+        if index > 0 {
+            lines.push(Line::from(""));
+        }
+
+        match block {
+            ApprovalContentBlock::Note { title, text, tone } => {
+                push_approval_block_title(&mut lines, title);
+                push_wrapped_lines(&mut lines, width, "  ", "  ", text, tone.style());
+            }
+            ApprovalContentBlock::List { title, items } => {
+                push_approval_block_title(&mut lines, title);
+                for item in items {
+                    push_wrapped_lines(
+                        &mut lines,
+                        width,
+                        "  - ",
+                        "    ",
+                        item,
+                        Style::default().fg(Color::Gray),
+                    );
+                }
+            }
+            ApprovalContentBlock::Code { title, text, mode } => {
+                push_approval_block_title(&mut lines, title);
+                if text.trim().is_empty() {
+                    lines.push(Line::from(Span::styled(
+                        "  (empty)",
+                        Style::default().fg(Color::DarkGray),
+                    )));
+                    continue;
+                }
+
+                for raw_line in text.lines() {
+                    let style = approval_code_line_style(*mode, raw_line);
+                    if raw_line.is_empty() {
+                        lines.push(Line::from(""));
+                    } else {
+                        push_wrapped_lines(&mut lines, width, "  ", "  ", raw_line, style);
+                    }
+                }
+            }
+        }
+    }
+
+    if lines.is_empty() {
+        lines.push(Line::from(Span::styled(
+            chat_text("chat.approval.generic"),
+            Style::default().fg(Color::DarkGray),
+        )));
+    }
+
+    lines
+}
+
+fn push_approval_block_title(lines: &mut Vec<Line<'static>>, title: &str) {
+    lines.push(Line::from(vec![Span::styled(
+        format!(" {} ", title),
+        Style::default()
+            .fg(Color::White)
+            .bg(Color::DarkGray)
+            .add_modifier(Modifier::BOLD),
+    )]));
+}
+
+fn approval_code_line_style(mode: ApprovalCodeMode, line: &str) -> Style {
+    match mode {
+        ApprovalCodeMode::Plain => Style::default().fg(Color::Gray),
+        ApprovalCodeMode::Diff => {
+            if line.starts_with("@@") {
+                Style::default()
+                    .fg(Color::Yellow)
+                    .add_modifier(Modifier::BOLD)
+            } else if line.starts_with("diff --git")
+                || line.starts_with("index ")
+                || line.starts_with("--- ")
+                || line.starts_with("+++ ")
+            {
+                Style::default().fg(Color::Cyan)
+            } else if line.starts_with('+') && !line.starts_with("+++") {
+                Style::default().fg(Color::Green)
+            } else if line.starts_with('-') && !line.starts_with("---") {
+                Style::default().fg(Color::Red)
+            } else {
+                Style::default().fg(Color::Gray)
+            }
+        }
+    }
+}
+
+fn approval_string_param(tool: &ToolEventData, key: &str) -> Option<String> {
+    tool.parameters
+        .get(key)
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(str::to_owned)
+}
+
+fn approval_bool_param(tool: &ToolEventData, key: &str) -> Option<bool> {
+    match tool.parameters.get(key) {
+        Some(Value::Bool(value)) => Some(*value),
+        Some(Value::Number(value)) => value.as_i64().map(|number| number != 0),
+        Some(Value::String(value)) => {
+            let normalized = value.trim().to_ascii_lowercase();
+            match normalized.as_str() {
+                "true" | "1" | "yes" | "on" => Some(true),
+                "false" | "0" | "no" | "off" => Some(false),
+                _ => None,
+            }
+        }
+        _ => None,
+    }
+}
+
+fn approval_string_array_param(tool: &ToolEventData, key: &str) -> Vec<String> {
+    tool.parameters
+        .get(key)
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(|value| value.as_str())
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(str::to_owned)
+        .collect()
+}
+
+fn approval_pretty_json_string(raw: &str) -> Option<String> {
+    serde_json::from_str::<Value>(raw)
+        .ok()
+        .and_then(|value| serde_json::to_string_pretty(&value).ok())
+}
+
+fn approval_pretty_value(value: &Value) -> String {
+    serde_json::to_string_pretty(value).unwrap_or_else(|_| chat_text("chat.approval.generic"))
+}
+
+fn approval_manifest_main_file(manifest_json: &str) -> String {
+    approval_pretty_json_string(manifest_json)
+        .and_then(|json| serde_json::from_str::<Value>(&json).ok())
+        .and_then(|value| {
+            value
+                .get("main")
+                .and_then(Value::as_str)
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .map(str::to_owned)
+        })
+        .unwrap_or_else(|| "index.js".to_string())
+}
+
+fn approval_diff_stats(patch: &str) -> (usize, usize, usize) {
+    let mut files = 0usize;
+    let mut added = 0usize;
+    let mut removed = 0usize;
+
+    for line in patch.lines() {
+        if line.starts_with("diff --git ") {
+            files += 1;
+        }
+        if line.starts_with('+') && !line.starts_with("+++") {
+            added += 1;
+        }
+        if line.starts_with('-') && !line.starts_with("---") {
+            removed += 1;
+        }
+    }
+
+    if files == 0 && !patch.trim().is_empty() {
+        files = 1;
+    }
+
+    (files, added, removed)
 }
 
 fn last_assistant_from_messages(messages: &[ConversationMessageData]) -> Option<String> {
@@ -4852,6 +5502,75 @@ mod tests {
             approved: None,
             result: None,
         }
+    }
+
+    #[test]
+    fn modify_plugin_approval_renders_full_diff_block() {
+        let mut overlay = ApprovalOverlay::from_tool(&tool_event(
+            "call-1",
+            "modify_script_plugin",
+            serde_json::json!({
+                "plugin_name": "Weather",
+                "plugin_id": "weather.fetch",
+                "touched_files": ["index.js"],
+                "patch_preview": "@@ old preview @@",
+                "patch": "diff --git a/index.js b/index.js\n--- a/index.js\n+++ b/index.js\n@@ -1,1 +1,1 @@\n-console.log('old');\n+console.log('new');\n",
+            }),
+        ));
+
+        let text = lines_text(overlay.content_lines(64));
+
+        assert!(text.contains(" Patch "));
+        assert!(text.contains("diff --git a/index.js b/index.js"));
+        assert!(text.contains("-console.log('old');"));
+        assert!(text.contains("+console.log('new');"));
+        assert!(!text.contains("\"patch\":"));
+    }
+
+    #[test]
+    fn create_plugin_approval_renders_manifest_and_script_sections() {
+        let mut overlay = ApprovalOverlay::from_tool(&tool_event(
+            "call-2",
+            "generate_script_plugin",
+            serde_json::json!({
+                "plugin_name": "Weather",
+                "plugin_id": "weather.fetch",
+                "requires_network": true,
+                "overwrite": false,
+                "manifest_json": "{\"name\":\"Weather\",\"main\":\"index.js\",\"permissions\":{\"network\":true}}",
+                "script_code": "export default async function run() {\n  return 'ok'\n}",
+            }),
+        ));
+
+        let text = lines_text(overlay.content_lines(64));
+
+        assert!(text.contains(" manifest.json "));
+        assert!(text.contains(" index.js "));
+        assert!(text.contains("\"name\": \"Weather\""));
+        assert!(text.contains("export default async function run()"));
+    }
+
+    #[test]
+    fn approval_overlay_scroll_clamps_to_viewport() {
+        let mut overlay = ApprovalOverlay::from_tool(&tool_event(
+            "call-3",
+            "write_clipboard",
+            serde_json::json!({
+                "text": (0..20).map(|index| format!("line {index}")).collect::<Vec<_>>().join("\n"),
+            }),
+        ));
+
+        let total_lines = overlay.content_lines(48).len();
+        overlay.update_viewport(4, total_lines);
+
+        overlay.scroll_end();
+        assert_eq!(overlay.scroll, total_lines.saturating_sub(4));
+
+        overlay.scroll_down(10);
+        assert_eq!(overlay.scroll, total_lines.saturating_sub(4));
+
+        overlay.scroll_home();
+        assert_eq!(overlay.scroll, 0);
     }
 
     #[test]

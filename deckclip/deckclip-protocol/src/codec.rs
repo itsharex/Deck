@@ -28,8 +28,8 @@ pub enum CodecError {
 /// Frame format:
 /// ```text
 /// ┌──────────────┬──────────────┬────────────────────┐
-/// │ Magic (2B)   │ Length (4B)  │  JSON Payload       │
-/// │ 0xDE 0xCC    │ big-endian   │  UTF-8 encoded      │
+/// │ Magic (2B)   │ Length (4B)  │  JSON Payload      │
+/// │ 0xDE 0xCC    │ big-endian   │  UTF-8 encoded     │
 /// └──────────────┴──────────────┴────────────────────┘
 /// ```
 pub fn encode_frame<T: serde::Serialize>(value: &T) -> Result<Vec<u8>, CodecError> {
