@@ -4839,9 +4839,10 @@ fn approval_content(
             let plugin_id =
                 approval_string_param(tool, "plugin_id").unwrap_or_else(|| "-".to_string());
             let touched_files = approval_string_array_param(tool, "touched_files");
-            let patch = approval_string_param(tool, "patch")
+            let raw_patch = approval_string_param(tool, "patch")
                 .or_else(|| approval_string_param(tool, "patch_preview"))
                 .unwrap_or_default();
+            let patch = approval_review_patch(&raw_patch);
             let (file_count, added, removed) = approval_diff_stats(&patch);
             let diff_summary = if patch.is_empty() {
                 format!("{} file(s)", touched_files.len())
@@ -5503,6 +5504,100 @@ fn approval_diff_stats(patch: &str) -> (usize, usize, usize) {
     (files, added, removed)
 }
 
+fn approval_review_patch(raw_patch: &str) -> String {
+    let normalized = raw_patch.replace("\r\n", "\n");
+    let first_line = normalized
+        .lines()
+        .find(|line| !line.trim().is_empty())
+        .map(str::trim)
+        .unwrap_or("");
+    if first_line != "*** Begin Patch" {
+        return normalized;
+    }
+
+    let mut rendered = Vec::new();
+    let mut has_hunk_header = false;
+
+    for line in normalized.lines() {
+        let trimmed = line.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+
+        if matches!(
+            trimmed,
+            "*** Begin Patch" | "*** End Patch" | "*** End of File"
+        ) {
+            continue;
+        }
+
+        if let Some(path) = trimmed.strip_prefix("*** Update File: ") {
+            push_review_patch_header(&mut rendered, path.trim(), false);
+            has_hunk_header = false;
+            continue;
+        }
+
+        if let Some(path) = trimmed.strip_prefix("*** Add File: ") {
+            push_review_patch_header(&mut rendered, path.trim(), true);
+            has_hunk_header = false;
+            continue;
+        }
+
+        if let Some(path) = trimmed.strip_prefix("*** Delete File: ") {
+            if !rendered.is_empty() {
+                rendered.push(String::new());
+            }
+            let path = path.trim();
+            rendered.push(format!("diff --git a/{path} b/{path}"));
+            rendered.push(format!("--- a/{path}"));
+            rendered.push("+++ /dev/null".to_string());
+            rendered.push("@@".to_string());
+            rendered.push("-[file deleted]".to_string());
+            has_hunk_header = true;
+            continue;
+        }
+
+        if trimmed.starts_with("*** Move to:") {
+            continue;
+        }
+
+        if trimmed == "@@" || trimmed.starts_with("@@ ") {
+            rendered.push(trimmed.to_string());
+            has_hunk_header = true;
+            continue;
+        }
+
+        if line.starts_with(' ') || line.starts_with('+') || line.starts_with('-') {
+            if !has_hunk_header {
+                rendered.push("@@".to_string());
+                has_hunk_header = true;
+            }
+            rendered.push(line.to_string());
+        }
+    }
+
+    let review = rendered.join("\n");
+    if review.trim().is_empty() {
+        normalized
+    } else {
+        review
+    }
+}
+
+fn push_review_patch_header(rendered: &mut Vec<String>, path: &str, added_file: bool) {
+    if !rendered.is_empty() {
+        rendered.push(String::new());
+    }
+
+    rendered.push(format!("diff --git a/{path} b/{path}"));
+    if added_file {
+        rendered.push("--- /dev/null".to_string());
+    } else {
+        rendered.push(format!("--- a/{path}"));
+    }
+    rendered.push(format!("+++ b/{path}"));
+}
+
 fn last_assistant_from_messages(messages: &[ConversationMessageData]) -> Option<String> {
     messages
         .iter()
@@ -5799,6 +5894,29 @@ mod tests {
         assert!(text.contains("-console.log('old');"));
         assert!(text.contains("+console.log('new');"));
         assert!(!text.contains("\"patch\":"));
+    }
+
+    #[test]
+    fn modify_plugin_approval_filters_machine_patch_markers() {
+        let mut overlay = ApprovalOverlay::from_tool(&tool_event(
+            "call-raw",
+            "modify_script_plugin",
+            serde_json::json!({
+                "plugin_name": "Weather",
+                "plugin_id": "weather.fetch",
+                "touched_files": ["index.js"],
+                "patch": "*** Begin Patch\n*** Update File: index.js\n@@\n-console.log('old')\n+console.log('new')\n*** End Patch",
+            }),
+        ));
+
+        let text = lines_text(overlay.content_lines(64));
+
+        assert!(text.contains("diff --git a/index.js b/index.js"));
+        assert!(text.contains("--- a/index.js"));
+        assert!(text.contains("+++ b/index.js"));
+        assert!(!text.contains("*** Begin Patch"));
+        assert!(!text.contains("*** End Patch"));
+        assert!(!text.contains("*** Update File: index.js"));
     }
 
     #[test]
