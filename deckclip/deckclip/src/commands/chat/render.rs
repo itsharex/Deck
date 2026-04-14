@@ -1430,8 +1430,12 @@ pub(super) fn delete_before_cursor(text: &mut String, cursor: &mut usize) {
 }
 
 pub(super) fn delete_to_line_start_in_text(text: &mut String, cursor: &mut usize) {
-    let (start, _) = current_line_bounds(text, *cursor);
+    let (start, end) = current_line_bounds(text, *cursor);
     if start == *cursor {
+        let chars: Vec<char> = text.chars().collect();
+        if end == *cursor && *cursor > 0 && chars[*cursor - 1] == '\n' {
+            delete_before_cursor(text, cursor);
+        }
         return;
     }
 

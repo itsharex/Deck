@@ -210,14 +210,38 @@ fn delete_to_line_start_only_removes_text_before_cursor() {
 }
 
 #[test]
-fn delete_to_line_start_at_line_start_is_noop() {
+fn delete_to_line_start_on_empty_trailing_line_removes_previous_newline() {
     let mut app = test_app();
     app.set_input("hello\n\n".to_string());
 
     app.delete_to_line_start();
 
-    assert_eq!(app.input, "hello\n\n");
-    assert_eq!(app.input_cursor, char_count("hello\n\n"));
+    assert_eq!(app.input, "hello\n");
+    assert_eq!(app.input_cursor, char_count("hello\n"));
+}
+
+#[test]
+fn delete_to_line_start_on_middle_empty_line_removes_previous_newline() {
+    let mut app = test_app();
+    app.set_input("hello\n\nworld".to_string());
+    app.input_cursor = char_count("hello\n");
+
+    app.delete_to_line_start();
+
+    assert_eq!(app.input, "hello\nworld");
+    assert_eq!(app.input_cursor, char_count("hello"));
+}
+
+#[test]
+fn delete_to_line_start_at_non_empty_line_start_is_noop() {
+    let mut app = test_app();
+    app.set_input("hello\nworld".to_string());
+    app.input_cursor = char_count("hello\n");
+
+    app.delete_to_line_start();
+
+    assert_eq!(app.input, "hello\nworld");
+    assert_eq!(app.input_cursor, char_count("hello\n"));
 }
 
 #[test]
