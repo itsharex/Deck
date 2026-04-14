@@ -1,7 +1,6 @@
 use std::path::Path;
 
 use hmac::{Hmac, Mac};
-use rand::Rng;
 use sha2::Sha256;
 use tokio::fs;
 use tracing::debug;
@@ -30,8 +29,7 @@ pub async fn read_token(path: &Path) -> Result<String, DeckError> {
 
 /// Generate a random hex nonce (16 bytes → 32 hex chars).
 pub fn generate_nonce() -> String {
-    let mut rng = rand::thread_rng();
-    let bytes: [u8; 16] = rng.gen();
+    let bytes: [u8; 16] = rand::random();
     hex::encode(bytes)
 }
 

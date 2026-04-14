@@ -462,8 +462,9 @@ fn tool_events_replace_thinking_without_appending_activity() {
     );
 
     assert_eq!(app.activities.len(), 0);
-    assert_eq!(app.busy_action.as_deref(), Some("Saving memory..."));
-    assert!(app.status_text().contains("Saving memory..."));
+    let expected = chat_text("chat.tool.saving_memory");
+    assert_eq!(app.busy_action.as_deref(), Some(expected.as_str()));
+    assert!(app.status_text().contains(expected.as_str()));
 
     handle_ui_event(
         &mut app,
@@ -493,7 +494,11 @@ fn repeated_search_tool_status_matches_app_style() {
             serde_json::json!({"query": "hello"}),
         )),
     );
-    assert_eq!(app.busy_action.as_deref(), Some("Searching \"hello\""));
+    let expected = chat_format(
+        "chat.tool.searching_clipboard_with_query",
+        &[("{query}", "hello".to_string())],
+    );
+    assert_eq!(app.busy_action.as_deref(), Some(expected.as_str()));
 
     handle_ui_event(
         &mut app,
@@ -503,7 +508,8 @@ fn repeated_search_tool_status_matches_app_style() {
             serde_json::json!({"query": "hello"}),
         )),
     );
-    assert_eq!(app.busy_action.as_deref(), Some("Searching \"hello\" +1"));
+    let repeated = format!("{} +1", expected);
+    assert_eq!(app.busy_action.as_deref(), Some(repeated.as_str()));
 }
 
 #[test]
