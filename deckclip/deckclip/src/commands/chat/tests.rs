@@ -220,6 +220,54 @@ fn delete_to_line_start_at_line_start_is_noop() {
     assert_eq!(app.input_cursor, char_count("hello\n\n"));
 }
 
+#[test]
+fn terminal_paste_empty_text_does_not_inject_clipboard_plain_text_into_slash_query() {
+    let mut app = test_app();
+    app.set_input("/cos".to_string());
+
+    handle_ui_event(
+        &mut app,
+        UiEvent::TerminalPasteResolved {
+            pasted_text: String::new(),
+            clipboard: Ok(ClipboardPasteData {
+                text: Some("最新剪贴板记录".to_string()),
+                attachment: None,
+                attachments: Vec::new(),
+            }),
+        },
+    );
+
+    assert_eq!(app.input, "/cos");
+    assert_eq!(app.slash_query(), Some("/cos"));
+    assert!(app
+        .slash_matches()
+        .iter()
+        .any(|command| command.name == "/cost"));
+    assert!(app.footer_message.is_none());
+}
+
+#[test]
+fn terminal_paste_prefers_terminal_text_over_chat_clipboard_text() {
+    let mut app = test_app();
+    app.set_input("/".to_string());
+
+    handle_ui_event(
+        &mut app,
+        UiEvent::TerminalPasteResolved {
+            pasted_text: "cost".to_string(),
+            clipboard: Ok(ClipboardPasteData {
+                text: Some("最新剪贴板记录".to_string()),
+                attachment: None,
+                attachments: Vec::new(),
+            }),
+        },
+    );
+
+    assert_eq!(app.input, "/cost");
+    assert_eq!(app.slash_query(), Some("/cost"));
+    assert!(app.footer_message.is_none());
+}
+
 fn lines_text(lines: &[Line<'static>]) -> String {
     lines
         .iter()

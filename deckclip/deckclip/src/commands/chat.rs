@@ -1467,6 +1467,8 @@ fn handle_ui_event(app: &mut ChatApp, event: UiEvent) {
             Ok(data) => {
                 let attachments = data.normalized_attachments();
                 let has_attachment = !attachments.is_empty();
+                let pasted_text_is_path_payload =
+                    !pasted_text.is_empty() && looks_like_path_payload(&pasted_text);
 
                 if has_attachment {
                     let added = app.append_pending_attachments(attachments);
@@ -1481,15 +1483,19 @@ fn handle_ui_event(app: &mut ChatApp, event: UiEvent) {
                             MetaTone::Warning,
                         );
                     }
-                } else if let Some(text) = data.text {
-                    app.insert_text(&text);
-                    app.set_footer(
-                        chat_text("chat.footer.clipboard_text_pasted"),
-                        MetaTone::Success,
-                    );
-                } else if !pasted_text.is_empty() && !looks_like_path_payload(&pasted_text) {
+                } else if !pasted_text.is_empty() && !pasted_text_is_path_payload {
                     app.insert_text(&pasted_text);
-                } else {
+                } else if pasted_text_is_path_payload {
+                    if let Some(text) = data.text.filter(|text| !text.is_empty()) {
+                        app.insert_text(&text);
+                        app.set_footer(
+                            chat_text("chat.footer.clipboard_text_pasted"),
+                            MetaTone::Success,
+                        );
+                    } else {
+                        app.set_footer(chat_text("chat.footer.clipboard_empty"), MetaTone::Warning);
+                    }
+                } else if !pasted_text.is_empty() {
                     app.set_footer(chat_text("chat.footer.clipboard_empty"), MetaTone::Warning);
                 }
 
