@@ -292,6 +292,59 @@ fn terminal_paste_prefers_terminal_text_over_chat_clipboard_text() {
     assert!(app.footer_message.is_none());
 }
 
+#[test]
+fn long_paste_collapses_into_placeholder_and_expands_for_submission() {
+    let mut app = test_app();
+    let large = "x".repeat(LARGE_PASTE_CHAR_THRESHOLD + 32);
+
+    assert!(app.insert_paste_text(&large));
+    assert_eq!(app.pending_paste_count(), 1);
+    assert_ne!(app.input, large);
+    assert!(app.input.contains("粘贴 #1") || app.input.contains("Paste #1"));
+    assert_eq!(app.expand_input_with_pending_pastes(), large);
+}
+
+#[test]
+fn backspace_removes_entire_pending_paste_placeholder() {
+    let mut app = test_app();
+    let large = "x".repeat(LARGE_PASTE_CHAR_THRESHOLD + 10);
+
+    app.insert_paste_text(&large);
+    app.backspace();
+
+    assert_eq!(app.input, "");
+    assert_eq!(app.pending_paste_count(), 0);
+}
+
+#[test]
+fn delete_forward_removes_entire_pending_paste_placeholder() {
+    let mut app = test_app();
+    let large = "x".repeat(LARGE_PASTE_CHAR_THRESHOLD + 10);
+
+    app.insert_paste_text(&large);
+    app.input_cursor = 0;
+    app.delete_forward();
+
+    assert_eq!(app.input, "");
+    assert_eq!(app.pending_paste_count(), 0);
+}
+
+#[test]
+fn input_history_restores_pending_paste_placeholder_and_payload() {
+    let mut app = test_app();
+    let large = "x".repeat(LARGE_PASTE_CHAR_THRESHOLD + 24);
+
+    app.insert_paste_text(&large);
+    let display = app.input.clone();
+    app.remember_input(&display);
+    app.set_input("draft".to_string());
+
+    assert!(app.browse_input_history_up());
+    assert_eq!(app.input, display);
+    assert_eq!(app.pending_paste_count(), 1);
+    assert_eq!(app.expand_input_with_pending_pastes(), large);
+}
+
 fn lines_text(lines: &[Line<'static>]) -> String {
     lines
         .iter()
@@ -631,6 +684,16 @@ fn input_panel_height_adds_attachment_row() {
     let base = input_panel_height(&app, 48);
 
     app.set_pending_attachment(test_attachment());
+
+    assert_eq!(input_panel_height(&app, 48), base + ATTACHMENT_CARD_HEIGHT);
+}
+
+#[test]
+fn input_panel_height_adds_pending_paste_row() {
+    let mut app = test_app();
+    let base = input_panel_height(&app, 48);
+
+    app.insert_paste_text(&"x".repeat(LARGE_PASTE_CHAR_THRESHOLD + 12));
 
     assert_eq!(input_panel_height(&app, 48), base + ATTACHMENT_CARD_HEIGHT);
 }

@@ -15,9 +15,11 @@ impl ChatApp {
             input: String::new(),
             input_cursor: 0,
             pending_attachments: Vec::new(),
+            pending_pastes: Vec::new(),
+            next_pending_paste_id: 1,
             input_history: Vec::new(),
             input_history_index: None,
-            input_history_draft: String::new(),
+            input_history_draft: ComposerHistoryEntry::default(),
             input_visual_width: 1,
             input_text_area: None,
             slash_selected: 0,
@@ -440,11 +442,82 @@ impl ChatApp {
     fn clear_input_text(&mut self) {
         self.input.clear();
         self.input_cursor = 0;
+        self.pending_pastes.clear();
         self.input_history_index = None;
-        self.input_history_draft.clear();
+        self.input_history_draft = ComposerHistoryEntry::default();
         self.slash_selected = 0;
         self.clear_quit_hint();
         self.sync_footer_after_input_change();
+    }
+
+    fn composer_history_entry(&self) -> ComposerHistoryEntry {
+        ComposerHistoryEntry {
+            input: self.input.clone(),
+            pending_pastes: self.pending_pastes.clone(),
+        }
+    }
+
+    fn apply_composer_history_entry(&mut self, entry: ComposerHistoryEntry) {
+        self.input = entry.input;
+        self.pending_pastes = entry.pending_pastes;
+        self.prune_pending_pastes();
+        self.input_cursor = char_count(&self.input);
+        self.refresh_slash_selection();
+        self.clear_quit_hint();
+        self.sync_footer_after_input_change();
+    }
+
+    fn prune_pending_pastes(&mut self) {
+        self.pending_pastes
+            .retain(|paste| self.input.contains(&paste.placeholder));
+    }
+
+    fn input_byte_index_from_char(&self, char_index: usize) -> usize {
+        if char_index == 0 {
+            return 0;
+        }
+        self.input
+            .char_indices()
+            .nth(char_index)
+            .map(|(index, _)| index)
+            .unwrap_or(self.input.len())
+    }
+
+    fn remove_input_char_range(&mut self, start: usize, end: usize) {
+        if start >= end {
+            return;
+        }
+        let byte_start = self.input_byte_index_from_char(start);
+        let byte_end = self.input_byte_index_from_char(end);
+        self.input.replace_range(byte_start..byte_end, "");
+        self.input_cursor = start;
+        self.prune_pending_pastes();
+    }
+
+    fn pending_paste_range_ending_at_cursor(&self) -> Option<(usize, usize)> {
+        for paste in &self.pending_pastes {
+            for (byte_start, _) in self.input.match_indices(&paste.placeholder) {
+                let start = char_count(&self.input[..byte_start]);
+                let end = start + char_count(&paste.placeholder);
+                if end == self.input_cursor {
+                    return Some((start, end));
+                }
+            }
+        }
+        None
+    }
+
+    fn pending_paste_range_starting_at_cursor(&self) -> Option<(usize, usize)> {
+        for paste in &self.pending_pastes {
+            for (byte_start, _) in self.input.match_indices(&paste.placeholder) {
+                let start = char_count(&self.input[..byte_start]);
+                let end = start + char_count(&paste.placeholder);
+                if start == self.input_cursor {
+                    return Some((start, end));
+                }
+            }
+        }
+        None
     }
 
     fn append_pending_attachments(
@@ -484,6 +557,47 @@ impl ChatApp {
         self.pending_attachments.len()
     }
 
+    fn pending_pastes(&self) -> &[PendingPasteData] {
+        &self.pending_pastes
+    }
+
+    fn pending_paste_count(&self) -> usize {
+        self.pending_pastes.len()
+    }
+
+    fn next_pending_paste_placeholder(&mut self, text: &str) -> String {
+        let id = self.next_pending_paste_id;
+        self.next_pending_paste_id = self.next_pending_paste_id.saturating_add(1);
+        format_pending_paste_placeholder(id, text)
+    }
+
+    fn insert_paste_text(&mut self, text: &str) -> bool {
+        if !should_collapse_pasted_text(text) {
+            self.insert_text(text);
+            return false;
+        }
+
+        let placeholder = self.next_pending_paste_placeholder(text);
+        insert_text_at(&mut self.input, &mut self.input_cursor, &placeholder);
+        self.pending_pastes.push(PendingPasteData {
+            placeholder,
+            full_text: text.to_string(),
+        });
+        self.input_history_index = None;
+        self.refresh_slash_selection();
+        self.clear_quit_hint();
+        self.sync_footer_after_input_change();
+        true
+    }
+
+    fn expand_input_with_pending_pastes(&self) -> String {
+        let mut expanded = self.input.clone();
+        for paste in &self.pending_pastes {
+            expanded = expanded.replacen(&paste.placeholder, &paste.full_text, 1);
+        }
+        expanded
+    }
+
     fn pending_attachments_full(&self) -> bool {
         self.pending_attachments.len() >= MAX_PENDING_ATTACHMENTS
     }
@@ -502,18 +616,22 @@ impl ChatApp {
         if submitted.is_empty() {
             return;
         }
+        let entry = ComposerHistoryEntry {
+            input: submitted.to_string(),
+            pending_pastes: self.pending_pastes.clone(),
+        };
         if self
             .input_history
             .last()
-            .is_some_and(|last| last == submitted)
+            .is_some_and(|last| last == &entry)
         {
             self.input_history_index = None;
-            self.input_history_draft.clear();
+            self.input_history_draft = ComposerHistoryEntry::default();
             return;
         }
-        self.input_history.push(submitted.to_string());
+        self.input_history.push(entry);
         self.input_history_index = None;
-        self.input_history_draft.clear();
+        self.input_history_draft = ComposerHistoryEntry::default();
     }
 
     fn browse_input_history_up(&mut self) -> bool {
@@ -525,17 +643,13 @@ impl ChatApp {
             Some(0) => 0,
             Some(index) => index.saturating_sub(1),
             None => {
-                self.input_history_draft = self.input.clone();
+                self.input_history_draft = self.composer_history_entry();
                 self.input_history.len() - 1
             }
         };
 
         self.input_history_index = Some(next_index);
-        self.input = self.input_history[next_index].clone();
-        self.input_cursor = char_count(&self.input);
-        self.refresh_slash_selection();
-        self.clear_quit_hint();
-        self.sync_footer_after_input_change();
+        self.apply_composer_history_entry(self.input_history[next_index].clone());
         true
     }
 
@@ -545,19 +659,14 @@ impl ChatApp {
         };
 
         if index + 1 >= self.input_history.len() {
-            self.input = std::mem::take(&mut self.input_history_draft);
-            self.input_cursor = char_count(&self.input);
+            let draft = std::mem::take(&mut self.input_history_draft);
+            self.apply_composer_history_entry(draft);
             self.input_history_index = None;
         } else {
             let next_index = index + 1;
             self.input_history_index = Some(next_index);
-            self.input = self.input_history[next_index].clone();
-            self.input_cursor = char_count(&self.input);
+            self.apply_composer_history_entry(self.input_history[next_index].clone());
         }
-
-        self.refresh_slash_selection();
-        self.clear_quit_hint();
-        self.sync_footer_after_input_change();
         true
     }
 
@@ -709,6 +818,7 @@ impl ChatApp {
 
     fn set_input(&mut self, value: String) {
         self.input = value;
+        self.pending_pastes.clear();
         self.input_cursor = char_count(&self.input);
         self.input_history_index = None;
         self.refresh_slash_selection();
@@ -718,6 +828,7 @@ impl ChatApp {
 
     fn insert_char(&mut self, ch: char) {
         insert_char_at(&mut self.input, &mut self.input_cursor, ch);
+        self.prune_pending_pastes();
         self.input_history_index = None;
         self.refresh_slash_selection();
         self.clear_quit_hint();
@@ -726,6 +837,7 @@ impl ChatApp {
 
     fn insert_text(&mut self, text: &str) {
         insert_text_at(&mut self.input, &mut self.input_cursor, text);
+        self.prune_pending_pastes();
         self.input_history_index = None;
         self.refresh_slash_selection();
         self.clear_quit_hint();
@@ -733,7 +845,12 @@ impl ChatApp {
     }
 
     fn backspace(&mut self) {
-        delete_before_cursor(&mut self.input, &mut self.input_cursor);
+        if let Some((start, end)) = self.pending_paste_range_ending_at_cursor() {
+            self.remove_input_char_range(start, end);
+        } else {
+            delete_before_cursor(&mut self.input, &mut self.input_cursor);
+            self.prune_pending_pastes();
+        }
         self.input_history_index = None;
         self.refresh_slash_selection();
         self.clear_quit_hint();
@@ -741,7 +858,12 @@ impl ChatApp {
     }
 
     fn delete_forward(&mut self) {
-        delete_at_cursor(&mut self.input, self.input_cursor);
+        if let Some((start, end)) = self.pending_paste_range_starting_at_cursor() {
+            self.remove_input_char_range(start, end);
+        } else {
+            delete_at_cursor(&mut self.input, self.input_cursor);
+            self.prune_pending_pastes();
+        }
         self.input_history_index = None;
         self.refresh_slash_selection();
         self.clear_quit_hint();
@@ -790,6 +912,7 @@ impl ChatApp {
 
     fn delete_to_line_start(&mut self) {
         delete_to_line_start_in_text(&mut self.input, &mut self.input_cursor);
+        self.prune_pending_pastes();
         self.input_history_index = None;
         self.refresh_slash_selection();
         self.clear_quit_hint();

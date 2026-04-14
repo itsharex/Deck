@@ -176,10 +176,25 @@ fn render_input(frame: &mut Frame<'_>, area: Rect, app: &mut ChatApp) {
 
     let attachment_height =
         pending_attachment_preview_height(inner.width, app.pending_attachment_count());
-    let sections = if attachment_height > 0 {
+    let pending_paste_height = pending_attachment_preview_height(inner.width, app.pending_paste_count());
+    let sections = if attachment_height > 0 && pending_paste_height > 0 {
+        Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([
+                Constraint::Length(attachment_height),
+                Constraint::Length(pending_paste_height),
+                Constraint::Min(1),
+            ])
+            .split(inner)
+    } else if attachment_height > 0 {
         Layout::default()
             .direction(Direction::Vertical)
             .constraints([Constraint::Length(attachment_height), Constraint::Min(1)])
+            .split(inner)
+    } else if pending_paste_height > 0 {
+        Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([Constraint::Length(pending_paste_height), Constraint::Min(1)])
             .split(inner)
     } else {
         Layout::default()
@@ -188,11 +203,17 @@ fn render_input(frame: &mut Frame<'_>, area: Rect, app: &mut ChatApp) {
             .split(inner)
     };
 
+    let mut section_index = 0;
     if attachment_height > 0 {
-        render_pending_attachments(frame, sections[0], app.pending_attachments());
+        render_pending_attachments(frame, sections[section_index], app.pending_attachments());
+        section_index += 1;
+    }
+    if pending_paste_height > 0 {
+        render_pending_pastes(frame, sections[section_index], app.pending_pastes());
+        section_index += 1;
     }
 
-    let input_row = *sections.last().unwrap_or(&inner);
+    let input_row = sections.get(section_index).copied().unwrap_or(inner);
     if input_row.width == 0 || input_row.height == 0 {
         app.input_text_area = None;
         return;
@@ -901,6 +922,41 @@ fn render_pending_attachments(
     }
 }
 
+fn render_pending_pastes(frame: &mut Frame<'_>, area: Rect, pending_pastes: &[PendingPasteData]) {
+    if pending_pastes.is_empty() || area.width == 0 || area.height == 0 {
+        return;
+    }
+
+    let card_areas = attachment_card_areas(area, pending_pastes.len());
+    for (index, (paste, card_area)) in pending_pastes.iter().zip(card_areas.iter()).enumerate() {
+        let title = pending_paste_inline_label(index + 1);
+        let block = Block::default()
+            .borders(Borders::ALL)
+            .border_style(Style::default().fg(Color::Yellow))
+            .title(Line::from(vec![
+                Span::raw(" "),
+                Span::styled(
+                    title,
+                    Style::default()
+                        .fg(Color::Yellow)
+                        .add_modifier(Modifier::BOLD),
+                ),
+                Span::raw(" "),
+            ]));
+        frame.render_widget(block.clone(), *card_area);
+
+        let inner = block.inner(*card_area);
+        if inner.width == 0 || inner.height == 0 {
+            continue;
+        }
+
+        let body_budget = inner.width.saturating_sub(1) as usize;
+        let body = truncate_text(&pending_paste_preview_text(paste), body_budget.max(1));
+        let line = Line::from(vec![Span::styled(body, Style::default().fg(Color::Gray))]);
+        frame.render_widget(Paragraph::new(line), inner);
+    }
+}
+
 fn attachment_card_areas(area: Rect, attachment_count: usize) -> Vec<Rect> {
     if attachment_count == 0 || area.width == 0 || area.height == 0 {
         return Vec::new();
@@ -961,6 +1017,33 @@ fn attachment_preview_text(attachment: &ChatAttachmentData) -> String {
     }
 }
 
+fn pending_paste_preview_text(paste: &PendingPasteData) -> String {
+    let line_count = pasted_text_line_count(&paste.full_text);
+    let char_count = char_count(&paste.full_text);
+    let summary = match i18n::locale() {
+        "en" => {
+            if line_count > 1 {
+                format!("{line_count} lines · {char_count} chars")
+            } else {
+                format!("{char_count} chars")
+            }
+        }
+        _ => {
+            if line_count > 1 {
+                format!("{line_count} 行 · {char_count} 字")
+            } else {
+                format!("{char_count} 字")
+            }
+        }
+    };
+    let normalized = paste.full_text.split_whitespace().collect::<Vec<_>>().join(" ");
+    if normalized.is_empty() {
+        summary
+    } else {
+        format!("{summary} · {normalized}")
+    }
+}
+
 fn attachment_inline_label(attachment: &ChatAttachmentData, index: Option<usize>) -> String {
     let base = if attachment.kind == "image_ocr" {
         match i18n::locale() {
@@ -976,6 +1059,13 @@ fn attachment_inline_label(attachment: &ChatAttachmentData, index: Option<usize>
     index
         .map(|index| format!("{base} {index}"))
         .unwrap_or_else(|| base.to_string())
+}
+
+fn pending_paste_inline_label(index: usize) -> String {
+    match i18n::locale() {
+        "en" => format!("Paste {index}"),
+        _ => format!("粘贴 {index}"),
+    }
 }
 
 fn attachment_label_style(attachment: &ChatAttachmentData) -> Style {
@@ -1102,7 +1192,9 @@ pub(super) fn input_panel_height(app: &ChatApp, width: u16) -> u16 {
     let visible_lines = layout.rows.len().clamp(1, MAX_INPUT_VISIBLE_LINES as usize);
     let attachment_height =
         pending_attachment_preview_height(width.saturating_sub(2), app.pending_attachment_count());
-    visible_lines as u16 + 2 + attachment_height
+    let pending_paste_height =
+        pending_attachment_preview_height(width.saturating_sub(2), app.pending_paste_count());
+    visible_lines as u16 + 2 + attachment_height + pending_paste_height
 }
 
 pub(super) fn input_viewport(

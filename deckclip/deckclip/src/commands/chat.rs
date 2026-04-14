@@ -104,6 +104,18 @@ struct ClipboardPasteData {
     attachments: Vec<ChatAttachmentData>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+struct PendingPasteData {
+    placeholder: String,
+    full_text: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+struct ComposerHistoryEntry {
+    input: String,
+    pending_pastes: Vec<PendingPasteData>,
+}
+
 impl ConversationMessageData {
     fn normalized_attachments(&self) -> Vec<ChatAttachmentData> {
         if !self.attachments.is_empty() {
@@ -432,6 +444,8 @@ const MAX_PENDING_ATTACHMENTS: usize = 2;
 const ATTACHMENT_CARD_HEIGHT: u16 = 3;
 const MIN_TWO_COLUMN_ATTACHMENT_WIDTH: u16 = 56;
 const MIN_TOOL_STATUS_DISPLAY: Duration = Duration::from_millis(450);
+const LARGE_PASTE_CHAR_THRESHOLD: usize = 800;
+const LARGE_PASTE_LINE_THRESHOLD: usize = 8;
 
 fn chat_text(key: &str) -> String {
     i18n::t(key)
@@ -475,6 +489,40 @@ fn message_count_text(count: usize) -> String {
     }
 }
 
+fn pasted_text_line_count(text: &str) -> usize {
+    if text.is_empty() {
+        0
+    } else {
+        text.chars().filter(|ch| *ch == '\n').count() + 1
+    }
+}
+
+fn should_collapse_pasted_text(text: &str) -> bool {
+    let line_count = pasted_text_line_count(text);
+    char_count(text) > LARGE_PASTE_CHAR_THRESHOLD || line_count >= LARGE_PASTE_LINE_THRESHOLD
+}
+
+fn format_pending_paste_placeholder(id: usize, text: &str) -> String {
+    let line_count = pasted_text_line_count(text);
+    let char_count = char_count(text);
+    match i18n::locale() {
+        "en" => {
+            if line_count > 1 {
+                format!("[Paste #{id} · {line_count} lines]")
+            } else {
+                format!("[Paste #{id} · {char_count} chars]")
+            }
+        }
+        _ => {
+            if line_count > 1 {
+                format!("[粘贴 #{id} · {line_count} 行]")
+            } else {
+                format!("[粘贴 #{id} · {char_count} 字]")
+            }
+        }
+    }
+}
+
 struct ChatApp {
     session_id: String,
     conversation_id: String,
@@ -488,9 +536,11 @@ struct ChatApp {
     input: String,
     input_cursor: usize,
     pending_attachments: Vec<ChatAttachmentData>,
-    input_history: Vec<String>,
+    pending_pastes: Vec<PendingPasteData>,
+    next_pending_paste_id: usize,
+    input_history: Vec<ComposerHistoryEntry>,
     input_history_index: Option<usize>,
-    input_history_draft: String,
+    input_history_draft: ComposerHistoryEntry,
     input_visual_width: u16,
     input_text_area: Option<Rect>,
     slash_selected: usize,
@@ -1082,12 +1132,13 @@ fn handle_key_event(
                 return;
             }
 
-            let submitted = app.input.trim().to_string();
+            let submitted_display = app.input.trim().to_string();
+            let submitted = app.expand_input_with_pending_pastes().trim().to_string();
             let pending_attachments = app.pending_attachments.clone();
             if submitted.is_empty() && pending_attachments.is_empty() {
                 return;
             }
-            app.remember_input(&submitted);
+            app.remember_input(&submitted_display);
             app.clear_composer();
 
             if submitted.starts_with('/') {
@@ -1484,12 +1535,18 @@ fn handle_ui_event(app: &mut ChatApp, event: UiEvent) {
                         );
                     }
                 } else if !pasted_text.is_empty() && !pasted_text_is_path_payload {
-                    app.insert_text(&pasted_text);
+                    if app.insert_paste_text(&pasted_text) {
+                        app.set_footer(chat_text("chat.footer.clipboard_text_compact"), MetaTone::Success);
+                    }
                 } else if pasted_text_is_path_payload {
                     if let Some(text) = data.text.filter(|text| !text.is_empty()) {
-                        app.insert_text(&text);
+                        let collapsed = app.insert_paste_text(&text);
                         app.set_footer(
-                            chat_text("chat.footer.clipboard_text_pasted"),
+                            chat_text(if collapsed {
+                                "chat.footer.clipboard_text_compact"
+                            } else {
+                                "chat.footer.clipboard_text_pasted"
+                            }),
                             MetaTone::Success,
                         );
                     } else {
@@ -1505,7 +1562,7 @@ fn handle_ui_event(app: &mut ChatApp, event: UiEvent) {
             }
             Err(message) => {
                 if !pasted_text.is_empty() && !looks_like_path_payload(&pasted_text) {
-                    app.insert_text(&pasted_text);
+                    let _ = app.insert_paste_text(&pasted_text);
                 }
                 app.set_footer(message, MetaTone::Warning);
             }
