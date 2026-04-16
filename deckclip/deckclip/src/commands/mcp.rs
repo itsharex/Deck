@@ -26,6 +26,7 @@ use crate::output::{render_error_message, OutputMode};
 const MCP_SERVER_KEY: &str = "deck";
 const OPENCODE_SCHEMA_URL: &str = "https://opencode.ai/config.json";
 
+const TOOL_HEALTH_STATUS: &str = "deck_health_status";
 const TOOL_READ_LATEST: &str = "deck_read_latest_clipboard";
 const TOOL_WRITE_TEXT: &str = "deck_write_clipboard_text";
 const TOOL_SEARCH_HISTORY: &str = "deck_search_clipboard_history";
@@ -228,7 +229,10 @@ fn render_doctor_report(report: &DoctorReport) -> String {
 
     lines.push(i18n::t("mcp.doctor.section.targets"));
     for target in &report.targets {
-        lines.push(format!("  {}: {}", target.client, target.path));
+        lines.push(format!(
+            "  {}: {} — {}",
+            target.client, target.path, target.status
+        ));
     }
     lines.push(String::new());
     lines.push(i18n::t("mcp.doctor.footer"));
@@ -290,6 +294,12 @@ async fn check_deck_health() -> Result<()> {
 fn tool_descriptors() -> Vec<ToolDescriptor> {
     vec![
         ToolDescriptor::new(
+            TOOL_HEALTH_STATUS,
+            "mcp.tools.health.description",
+            "mcp.tools.health.input",
+            true,
+        ),
+        ToolDescriptor::new(
             TOOL_READ_LATEST,
             "mcp.tools.read_latest.description",
             "mcp.tools.read_latest.input",
@@ -322,6 +332,7 @@ fn server_instructions() -> String {
 
 fn tool_title_key(name: &str) -> Option<&'static str> {
     match name {
+        TOOL_HEALTH_STATUS => Some("mcp.tool.health.title"),
         TOOL_READ_LATEST => Some("mcp.tool.read_latest.title"),
         TOOL_WRITE_TEXT => Some("mcp.tool.write_text.title"),
         TOOL_SEARCH_HISTORY => Some("mcp.tool.search_history.title"),
@@ -332,6 +343,7 @@ fn tool_title_key(name: &str) -> Option<&'static str> {
 
 fn tool_description_key(name: &str) -> Option<&'static str> {
     match name {
+        TOOL_HEALTH_STATUS => Some("mcp.tools.health.description"),
         TOOL_READ_LATEST => Some("mcp.tools.read_latest.description"),
         TOOL_WRITE_TEXT => Some("mcp.tools.write_text.description"),
         TOOL_SEARCH_HISTORY => Some("mcp.tools.search_history.description"),
@@ -697,6 +709,20 @@ impl DeckMcpServer {
 #[tool_router]
 impl DeckMcpServer {
     #[tool(
+        name = "deck_health_status",
+        description = "Check whether the local Deck App bridge is available.",
+        annotations(read_only_hint = true)
+    )]
+    pub async fn health_status(&self) -> Result<Json<ToolPayload>, ErrorData> {
+        let mut client = self.client.lock().await;
+        let response = client
+            .health()
+            .await
+            .map_err(|err| tool_error(anyhow::Error::new(err)))?;
+        Ok(Json(response_payload(TOOL_HEALTH_STATUS, response)))
+    }
+
+    #[tool(
         name = "deck_read_latest_clipboard",
         description = "Read the latest clipboard item from Deck.",
         annotations(read_only_hint = true)
@@ -906,6 +932,9 @@ struct DoctorHealth {
 struct DoctorTarget {
     client: String,
     path: String,
+    file_exists: bool,
+    configured: bool,
+    status: String,
 }
 
 impl DoctorTarget {
@@ -918,14 +947,122 @@ impl DoctorTarget {
             McpSetupClient::All => unreachable!(),
         };
 
-        let path = default_target_path(client)
-            .map(path_to_string)
-            .unwrap_or_else(|_| i18n::t("mcp.common.unavailable"));
+        let client_label = i18n::t(key);
 
-        Self {
-            client: i18n::t(key),
-            path,
+        match default_target_path(client) {
+            Ok(path) => {
+                let inspection = inspect_target_config(client, &path);
+                Self {
+                    client: client_label,
+                    path: path_to_string(&path),
+                    file_exists: inspection.file_exists,
+                    configured: inspection.configured,
+                    status: inspection.status,
+                }
+            }
+            Err(err) => Self {
+                client: client_label,
+                path: i18n::t("mcp.common.unavailable"),
+                file_exists: false,
+                configured: false,
+                status: err.to_string(),
+            },
         }
+    }
+}
+
+struct DoctorTargetInspection {
+    file_exists: bool,
+    configured: bool,
+    status: String,
+}
+
+fn inspect_target_config(client: McpSetupClient, path: &Path) -> DoctorTargetInspection {
+    if !path.exists() {
+        return DoctorTargetInspection {
+            file_exists: false,
+            configured: false,
+            status: i18n::t("mcp.doctor.target.file_missing"),
+        };
+    }
+
+    match client {
+        McpSetupClient::ClaudeDesktop | McpSetupClient::Cursor => {
+            inspect_json_target_config(path, "mcpServers")
+        }
+        McpSetupClient::Codex => inspect_text_target_config(path, "[mcp_servers.deck]"),
+        McpSetupClient::Opencode => inspect_text_target_config(path, "\"deck\""),
+        McpSetupClient::All => unreachable!(),
+    }
+}
+
+fn inspect_json_target_config(path: &Path, root_key: &str) -> DoctorTargetInspection {
+    let text = match fs::read_to_string(path) {
+        Ok(text) => text,
+        Err(err) => {
+            return DoctorTargetInspection {
+                file_exists: true,
+                configured: false,
+                status: format_i18n("mcp.doctor.target.read_failed", &[&err.to_string()]),
+            };
+        }
+    };
+
+    if text.trim().is_empty() {
+        return DoctorTargetInspection {
+            file_exists: true,
+            configured: false,
+            status: i18n::t("mcp.doctor.target.not_configured"),
+        };
+    }
+
+    let root = match serde_json::from_str::<Value>(&text) {
+        Ok(root) => root,
+        Err(err) => {
+            return DoctorTargetInspection {
+                file_exists: true,
+                configured: false,
+                status: format_i18n("mcp.doctor.target.invalid_json", &[&err.to_string()]),
+            };
+        }
+    };
+
+    let configured = root
+        .get(root_key)
+        .and_then(Value::as_object)
+        .map(|servers| servers.contains_key(MCP_SERVER_KEY))
+        .unwrap_or(false);
+
+    DoctorTargetInspection {
+        file_exists: true,
+        configured,
+        status: if configured {
+            i18n::t("mcp.doctor.target.configured")
+        } else {
+            i18n::t("mcp.doctor.target.not_configured")
+        },
+    }
+}
+
+fn inspect_text_target_config(path: &Path, needle: &str) -> DoctorTargetInspection {
+    match fs::read_to_string(path) {
+        Ok(text) => {
+            let configured = text.contains(needle);
+            DoctorTargetInspection {
+                file_exists: true,
+                configured,
+                status: if configured {
+                    i18n::t("mcp.doctor.target.configured")
+                } else {
+                    i18n::t("mcp.doctor.target.not_configured")
+                },
+            }
+        }
+        Err(err) => DoctorTargetInspection {
+            file_exists: true,
+            configured: false,
+            status: format_i18n("mcp.doctor.target.read_failed", &[&err.to_string()]),
+        },
     }
 }
 
@@ -997,11 +1134,23 @@ mod tests {
     #[test]
     fn localized_tool_catalog_uses_i18n_metadata() {
         let tools = localized_tool_catalog();
+        let health = tools
+            .iter()
+            .find(|tool| tool.name.as_ref() == TOOL_HEALTH_STATUS)
+            .expect("expected localized health tool");
         let read_latest = tools
-            .into_iter()
+            .iter()
             .find(|tool| tool.name.as_ref() == TOOL_READ_LATEST)
             .expect("expected localized read_latest tool");
 
+        assert_eq!(
+            health.title.as_deref(),
+            Some(i18n::t("mcp.tool.health.title").as_str())
+        );
+        assert_eq!(
+            health.description.as_deref(),
+            Some(i18n::t("mcp.tools.health.description").as_str())
+        );
         assert_eq!(
             read_latest.title.as_deref(),
             Some(i18n::t("mcp.tool.read_latest.title").as_str())
@@ -1079,6 +1228,76 @@ mod tests {
 
         let content = fs::read_to_string(&file_path).unwrap();
         assert!(content.contains("[mcp_servers.deck]"));
+
+        let _ = fs::remove_dir_all(&temp_dir);
+    }
+
+    #[test]
+    fn inspect_json_target_config_reports_configured_status() {
+        let temp_dir = std::env::temp_dir().join("deckclip-mcp-doctor-json-configured");
+        let file_path = temp_dir.join("cursor-mcp.json");
+        let _ = fs::remove_dir_all(&temp_dir);
+
+        ensure_parent_dir(&file_path).unwrap();
+        fs::write(
+            &file_path,
+            serde_json::to_string_pretty(&json!({
+                "mcpServers": {
+                    "deck": {
+                        "command": "deckclip",
+                        "args": ["mcp", "serve"],
+                    }
+                }
+            }))
+            .unwrap(),
+        )
+        .unwrap();
+
+        let inspection = inspect_json_target_config(&file_path, "mcpServers");
+        assert!(inspection.file_exists);
+        assert!(inspection.configured);
+        assert_eq!(inspection.status, i18n::t("mcp.doctor.target.configured"));
+
+        let _ = fs::remove_dir_all(&temp_dir);
+    }
+
+    #[test]
+    fn inspect_json_target_config_reports_missing_entry() {
+        let temp_dir = std::env::temp_dir().join("deckclip-mcp-doctor-json-missing");
+        let file_path = temp_dir.join("cursor-mcp.json");
+        let _ = fs::remove_dir_all(&temp_dir);
+
+        ensure_parent_dir(&file_path).unwrap();
+        fs::write(&file_path, "{\n  \"mcpServers\": {}\n}\n").unwrap();
+
+        let inspection = inspect_json_target_config(&file_path, "mcpServers");
+        assert!(inspection.file_exists);
+        assert!(!inspection.configured);
+        assert_eq!(
+            inspection.status,
+            i18n::t("mcp.doctor.target.not_configured")
+        );
+
+        let _ = fs::remove_dir_all(&temp_dir);
+    }
+
+    #[test]
+    fn inspect_text_target_config_reports_configured_status() {
+        let temp_dir = std::env::temp_dir().join("deckclip-mcp-doctor-text-configured");
+        let file_path = temp_dir.join("config.toml");
+        let _ = fs::remove_dir_all(&temp_dir);
+
+        ensure_parent_dir(&file_path).unwrap();
+        fs::write(
+            &file_path,
+            "[mcp_servers.deck]\ncommand = \"deckclip\"\nargs = [\"mcp\", \"serve\"]\n",
+        )
+        .unwrap();
+
+        let inspection = inspect_text_target_config(&file_path, "[mcp_servers.deck]");
+        assert!(inspection.file_exists);
+        assert!(inspection.configured);
+        assert_eq!(inspection.status, i18n::t("mcp.doctor.target.configured"));
 
         let _ = fs::remove_dir_all(&temp_dir);
     }

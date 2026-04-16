@@ -27,14 +27,12 @@ final class DataExportService {
             object: nil,
             queue: .main
         ) { [weak self] _ in
-            self?.cleanupTempFile()
+            Task { @MainActor in
+                self?.cleanupTempFile()
+            }
         }
     }
-    
-    deinit {
-        cleanupTempFile()
-    }
-    
+
     /// 清理临时文件
     private func cleanupTempFile() {
         guard let url = currentExportTempURL else { return }

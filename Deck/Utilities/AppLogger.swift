@@ -56,7 +56,7 @@ private enum AppLoggerThrottleOutcome: Sendable {
 /// - Swift 6 friendly (no `nonisolated(unsafe)` globals, no `@unchecked Sendable`).
 /// - Minimal invasive: keep existing call sites working.
 /// - Reduce log spam and disk IO in hot paths.
-final class AppLogger: Sendable {
+nonisolated final class AppLogger: Sendable {
     static let shared = AppLogger()
 
     private struct State: Sendable {
@@ -562,4 +562,4 @@ final class AppLogger: Sendable {
     }
 }
 
-let log = AppLogger.shared
+nonisolated let log = AppLogger.shared
