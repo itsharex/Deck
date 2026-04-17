@@ -15,7 +15,7 @@ use rmcp::model::{
 use rmcp::service::serve_server;
 use rmcp::transport::io::stdio;
 use rmcp::{tool, tool_handler, tool_router};
-use schemars::JsonSchema;
+use schemars::{json_schema, JsonSchema, Schema, SchemaGenerator};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
@@ -101,10 +101,6 @@ async fn run_doctor(output: OutputMode) -> Result<()> {
 }
 
 fn run_setup(args: McpSetupArgs, output: OutputMode) -> Result<()> {
-    if args.write && args.client == McpSetupClient::All {
-        bail!("{}", i18n::t("err.mcp_setup_write_requires_single_client"));
-    }
-
     if args.path.is_some() && args.client == McpSetupClient::All {
         bail!("{}", i18n::t("err.mcp_setup_path_requires_single_client"));
     }
@@ -385,6 +381,7 @@ fn build_setup_plan(
     match client {
         McpSetupClient::ClaudeDesktop => {
             let server_value = json!({
+                "type": "stdio",
                 "command": command,
                 "args": ["mcp", "serve"],
             });
@@ -406,6 +403,7 @@ fn build_setup_plan(
         }
         McpSetupClient::Cursor => {
             let server_value = json!({
+                "type": "stdio",
                 "command": command,
                 "args": ["mcp", "serve"],
             });
@@ -419,7 +417,7 @@ fn build_setup_plan(
                 path,
                 snippet,
                 note_keys: vec![
-                    "mcp.setup.note.cursor_project",
+                    "mcp.setup.note.cursor_global",
                     "mcp.setup.note.restart_client",
                 ],
                 kind: SetupPlanKind::JsonMcpServers {
@@ -439,14 +437,15 @@ fn build_setup_plan(
             })
         }
         McpSetupClient::Opencode => {
+            let server_value = opencode_server_value(command);
             let snippet = serde_json::to_string_pretty(&opencode_snippet(command))?;
 
             Ok(SetupPlan {
                 client_label_key: "mcp.client.opencode",
                 path,
                 snippet,
-                note_keys: vec!["mcp.setup.note.preview_only"],
-                kind: SetupPlanKind::PreviewOnly,
+                note_keys: vec!["mcp.setup.note.restart_client"],
+                kind: SetupPlanKind::OpencodeJson { server_value },
             })
         }
         McpSetupClient::All => unreachable!(),
@@ -460,13 +459,9 @@ fn write_setup_plan(plan: &SetupPlan) -> Result<SetupWriteOutcome> {
             server_value,
         } => write_json_mcp_config(&plan.path, root_key, server_value),
         SetupPlanKind::CodexToml => write_codex_config(&plan.path, &plan.snippet),
-        SetupPlanKind::PreviewOnly => bail!(
-            "{}",
-            format_i18n(
-                "err.mcp_setup_write_unsupported",
-                &[&i18n::t(plan.client_label_key)]
-            )
-        ),
+        SetupPlanKind::OpencodeJson { server_value } => {
+            write_opencode_config(&plan.path, server_value)
+        }
     }
 }
 
@@ -545,6 +540,57 @@ fn write_codex_config(path: &Path, snippet: &str) -> Result<SetupWriteOutcome> {
     Ok(SetupWriteOutcome::Written)
 }
 
+fn write_opencode_config(path: &Path, server_value: &Value) -> Result<SetupWriteOutcome> {
+    ensure_parent_dir(path)?;
+
+    let mut root = if path.exists() {
+        let text = fs::read_to_string(path)?;
+        if text.trim().is_empty() {
+            json!({})
+        } else {
+            serde_json::from_str::<Value>(&text).map_err(|err| {
+                anyhow!(format_i18n(
+                    "err.mcp_setup_invalid_json",
+                    &[&path_to_string(path), &err.to_string()]
+                ))
+            })?
+        }
+    } else {
+        json!({
+            "$schema": OPENCODE_SCHEMA_URL,
+        })
+    };
+
+    let root_object = root.as_object_mut().ok_or_else(|| {
+        anyhow!(format_i18n(
+            "err.mcp_setup_invalid_root",
+            &[&path_to_string(path)]
+        ))
+    })?;
+    root_object
+        .entry("$schema".to_string())
+        .or_insert_with(|| Value::String(OPENCODE_SCHEMA_URL.to_string()));
+
+    let section = root_object
+        .entry("mcp".to_string())
+        .or_insert_with(|| json!({}));
+    let section_object = section.as_object_mut().ok_or_else(|| {
+        anyhow!(format_i18n(
+            "err.mcp_setup_invalid_section",
+            &["mcp", &path_to_string(path)]
+        ))
+    })?;
+
+    if section_object.get(MCP_SERVER_KEY) == Some(server_value) {
+        return Ok(SetupWriteOutcome::AlreadyPresent);
+    }
+
+    section_object.insert(MCP_SERVER_KEY.to_string(), server_value.clone());
+    let rendered = format!("{}\n", serde_json::to_string_pretty(&root)?);
+    fs::write(path, rendered)?;
+    Ok(SetupWriteOutcome::Written)
+}
+
 fn ensure_parent_dir(path: &Path) -> Result<()> {
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent)?;
@@ -560,14 +606,14 @@ fn default_target_path(client: McpSetupClient) -> Result<PathBuf> {
                     .join("claude_desktop_config.json")
             })
             .ok_or_else(|| anyhow!(i18n::t("err.mcp_home_unavailable"))),
-        McpSetupClient::Cursor => Ok(env::current_dir()
-            .unwrap_or_else(|_| PathBuf::from("."))
-            .join(".cursor/mcp.json")),
+        McpSetupClient::Cursor => home_dir()
+            .map(|home| home.join(".cursor/mcp.json"))
+            .ok_or_else(|| anyhow!(i18n::t("err.mcp_home_unavailable"))),
         McpSetupClient::Codex => home_dir()
             .map(|home| home.join(".codex/config.toml"))
             .ok_or_else(|| anyhow!(i18n::t("err.mcp_home_unavailable"))),
         McpSetupClient::Opencode => home_dir()
-            .map(|home| home.join(".config/opencode/opencode.jsonc"))
+            .map(|home| home.join(".config/opencode/opencode.json"))
             .ok_or_else(|| anyhow!(i18n::t("err.mcp_home_unavailable"))),
         McpSetupClient::All => unreachable!(),
     }
@@ -625,17 +671,18 @@ fn opencode_snippet(command: &str) -> Value {
     );
 
     let mut mcp = serde_json::Map::new();
-    mcp.insert(
-        MCP_SERVER_KEY.to_string(),
-        json!({
-            "type": "local",
-            "command": [command, "mcp", "serve"],
-            "enabled": true,
-        }),
-    );
+    mcp.insert(MCP_SERVER_KEY.to_string(), opencode_server_value(command));
 
     root.insert("mcp".to_string(), Value::Object(mcp));
     Value::Object(root)
+}
+
+fn opencode_server_value(command: &str) -> Value {
+    json!({
+        "type": "local",
+        "command": [command, "mcp", "serve"],
+        "enabled": true,
+    })
 }
 
 fn toml_string(value: &str) -> String {
@@ -673,7 +720,19 @@ fn response_payload(tool: &str, response: Response) -> ToolPayload {
     ToolPayload {
         tool: tool.to_string(),
         text,
-        data: response.data,
+        data: normalize_tool_data(response.data),
+    }
+}
+
+fn normalize_tool_data(data: Option<Value>) -> Option<serde_json::Map<String, Value>> {
+    match data {
+        Some(Value::Object(map)) => Some(map),
+        Some(value) => {
+            let mut map = serde_json::Map::new();
+            map.insert("value".to_string(), value);
+            Some(map)
+        }
+        None => None,
     }
 }
 
@@ -878,7 +937,15 @@ fn default_search_limit() -> u32 {
 struct ToolPayload {
     tool: String,
     text: Option<String>,
-    data: Option<Value>,
+    #[schemars(schema_with = "tool_data_schema")]
+    data: Option<serde_json::Map<String, Value>>,
+}
+
+fn tool_data_schema(_gen: &mut SchemaGenerator) -> Schema {
+    json_schema!({
+        "type": "object",
+        "additionalProperties": true
+    })
 }
 
 #[derive(Debug, Serialize)]
@@ -991,7 +1058,7 @@ fn inspect_target_config(client: McpSetupClient, path: &Path) -> DoctorTargetIns
             inspect_json_target_config(path, "mcpServers")
         }
         McpSetupClient::Codex => inspect_text_target_config(path, "[mcp_servers.deck]"),
-        McpSetupClient::Opencode => inspect_text_target_config(path, "\"deck\""),
+        McpSetupClient::Opencode => inspect_json_target_config(path, "mcp"),
         McpSetupClient::All => unreachable!(),
     }
 }
@@ -1093,7 +1160,9 @@ enum SetupPlanKind {
         server_value: Value,
     },
     CodexToml,
-    PreviewOnly,
+    OpencodeJson {
+        server_value: Value,
+    },
 }
 
 enum SetupWriteOutcome {
@@ -1158,6 +1227,15 @@ mod tests {
         assert_eq!(
             read_latest.description.as_deref(),
             Some(i18n::t("mcp.tools.read_latest.description").as_str())
+        );
+
+        let output_schema = health
+            .output_schema
+            .as_ref()
+            .expect("expected health output schema");
+        assert_eq!(
+            output_schema["properties"]["data"]["type"],
+            Value::String("object".to_string())
         );
     }
 
@@ -1230,6 +1308,67 @@ mod tests {
         assert!(content.contains("[mcp_servers.deck]"));
 
         let _ = fs::remove_dir_all(&temp_dir);
+    }
+
+    #[test]
+    fn build_setup_plan_for_cursor_uses_stdio_transport() {
+        let temp_dir = std::env::temp_dir().join("deckclip-mcp-cursor-plan");
+        let file_path = temp_dir.join("mcp.json");
+        let _ = fs::remove_dir_all(&temp_dir);
+
+        let plan = build_setup_plan(McpSetupClient::Cursor, Some(&file_path), "deckclip").unwrap();
+        assert!(plan.snippet.contains("\"type\": \"stdio\""));
+        assert!(plan
+            .note_keys
+            .iter()
+            .any(|key| *key == "mcp.setup.note.cursor_global"));
+
+        let _ = fs::remove_dir_all(&temp_dir);
+    }
+
+    #[test]
+    fn write_opencode_config_merges_existing_servers() {
+        let temp_dir = std::env::temp_dir().join("deckclip-mcp-opencode-test");
+        let file_path = temp_dir.join("opencode.json");
+        let _ = fs::remove_dir_all(&temp_dir);
+
+        ensure_parent_dir(&file_path).unwrap();
+        fs::write(
+            &file_path,
+            serde_json::to_string_pretty(&json!({
+                "$schema": OPENCODE_SCHEMA_URL,
+                "mcp": {
+                    "existing": {
+                        "type": "local",
+                        "command": ["existing", "serve"],
+                    }
+                }
+            }))
+            .unwrap(),
+        )
+        .unwrap();
+
+        let outcome =
+            write_opencode_config(&file_path, &opencode_server_value("deckclip")).unwrap();
+        assert!(matches!(outcome, SetupWriteOutcome::Written));
+
+        let updated: Value =
+            serde_json::from_str(&fs::read_to_string(&file_path).unwrap()).unwrap();
+        assert!(updated["mcp"]["existing"].is_object());
+        assert_eq!(updated["mcp"]["deck"]["type"], "local");
+        assert_eq!(updated["mcp"]["deck"]["command"][0], "deckclip");
+
+        let _ = fs::remove_dir_all(&temp_dir);
+    }
+
+    #[test]
+    fn normalize_tool_data_wraps_non_object_values() {
+        let wrapped = normalize_tool_data(Some(json!(["a", "b"]))).expect("expected wrapped data");
+        assert_eq!(wrapped["value"], json!(["a", "b"]));
+
+        let object =
+            normalize_tool_data(Some(json!({ "text": "hello" }))).expect("expected object data");
+        assert_eq!(object["text"], json!("hello"));
     }
 
     #[test]

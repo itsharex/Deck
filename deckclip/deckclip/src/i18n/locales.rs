@@ -166,6 +166,7 @@ fn zh_hans() -> Map {
         ("mcp.setup.mode.already_present", "已存在"),
         ("mcp.setup.note.restart_client", "写入后请重启对应客户端，或重新加载当前工作区。"),
         ("mcp.setup.note.cursor_project", "Cursor 采用项目级配置，默认会写到当前目录下的 .cursor/mcp.json。"),
+        ("mcp.setup.note.cursor_global", "Cursor 默认会写到全局配置 ~/.cursor/mcp.json；如需项目级配置，可改用 --path 指向项目内 .cursor/mcp.json。"),
         ("mcp.setup.note.preview_only", "当前仅提供可直接粘贴的预览片段，暂不自动改写此客户端配置文件。"),
 
         // Errors
@@ -849,6 +850,7 @@ fn mcp_en() -> Map {
         ("mcp.setup.mode.already_present", "Already present"),
         ("mcp.setup.note.restart_client", "Restart the target client, or reload the current workspace, after writing the config."),
         ("mcp.setup.note.cursor_project", "Cursor uses project-level config, so the default target is .cursor/mcp.json in the current directory."),
+        ("mcp.setup.note.cursor_global", "Cursor writes to the global config at ~/.cursor/mcp.json by default; use --path if you want a project-scoped .cursor/mcp.json instead."),
         ("mcp.setup.note.preview_only", "This client currently gets a preview-only snippet. Paste it manually for now."),
         ("err.mcp_home_unavailable", "Unable to determine the current user's HOME directory"),
         ("err.mcp_latest_clipboard_missing_text", "The latest clipboard item does not contain a text field that this MCP tool can use"),
