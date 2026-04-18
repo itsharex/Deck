@@ -2,12 +2,6 @@
     <img width="1024" alt="The modern, native, privacy-first clipboard manager for macOS." src="photos/Deck.webp">
 </a>
 
-> [!WARNING]
-> **Temporary Notice (2026-04-17)**  
-> Please **do not download Deck for now** — the current macOS release package is being blocked by system security checks, so downloading it is likely unusable for now.  
-> If your existing installed copy is **still working**, please **do not update** and **do not use in-app auto update** for now. Existing installs that have not been updated can still keep working.  
-> We are working on a fix and will post an update here as soon as possible.
-
 <p align="center">
   <a href="#features">Features</a> ·
   <a href="#install">Install</a> ·
