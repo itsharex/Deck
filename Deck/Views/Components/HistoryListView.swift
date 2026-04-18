@@ -68,6 +68,7 @@ struct HistoryListView: View {
     @State private var preferredTypes: [String]?
     @State private var workspaceObserver: NSObjectProtocol?
     @State private var interaction = HistoryListInteractionState()
+    @State private var scrollRequestToken: Int = 0
     
     private let doubleTapInterval: TimeInterval = 0.25
     private let previewUpdateInterval: TimeInterval = 0.12
@@ -505,6 +506,9 @@ struct HistoryListView: View {
         .onChange(of: selectedId) { _, newId in
             handleSelectionChange(to: newId, proxy: proxy)
         }
+        .onChange(of: scrollRequestToken) { _, _ in
+            scrollToItem(id: selectedId, proxy: proxy)
+        }
         .onChange(of: dataStore.items) { _, _ in
             handleItemsChanged()
         }
@@ -560,6 +564,9 @@ struct HistoryListView: View {
         .scrollContentBackground(.hidden)
         .onChange(of: selectedId) { _, newId in
             handleSelectionChange(to: newId, proxy: proxy)
+        }
+        .onChange(of: scrollRequestToken) { _, _ in
+            scrollToItem(id: selectedId, proxy: proxy)
         }
         .onChange(of: dataStore.items) { _, _ in
             handleItemsChanged()
@@ -641,14 +648,23 @@ struct HistoryListView: View {
             preferredTypes = nil
         }
         if dataStore.lastChangeType == .search || dataStore.lastChangeType == .reset {
-            selectedId = displayItems.first?.id
+            let firstId = displayItems.first?.id
+            if selectedId == firstId {
+                requestScrollToSelection()
+            } else {
+                selectedId = firstId
+            }
         } else if isListTail {
             if dataStore.items.isEmpty {
                 NSSound.beep()
             } else {
                 interaction.lastSelectionWasRepeating = false
-                let id = dataStore.items.last?.id
-                selectedId = id
+                let id = displayItems.last?.id ?? dataStore.items.last?.id
+                if selectedId == id {
+                    requestScrollToSelection()
+                } else {
+                    selectedId = id
+                }
                 if isPreviewOpen, let id {
                     schedulePreviewUpdate(for: id, isRepeating: false)
                 }
@@ -658,8 +674,12 @@ struct HistoryListView: View {
                 NSSound.beep()
             } else {
                 interaction.lastSelectionWasRepeating = false
-                let id = dataStore.items.first?.id
-                selectedId = id
+                let id = displayItems.first?.id ?? dataStore.items.first?.id
+                if selectedId == id {
+                    requestScrollToSelection()
+                } else {
+                    selectedId = id
+                }
                 if isPreviewOpen, let id {
                     schedulePreviewUpdate(for: id, isRepeating: false)
                 }
@@ -1331,29 +1351,35 @@ struct HistoryListView: View {
             return
         }
 
-        let scrollTarget: AnyHashable
         let anchor: UnitPoint
+        let performScroll: () -> Void
         if vm.layoutMode == .vertical {
-            // 竖版模式：垂直滚动锚点
             if id == first {
-                scrollTarget = AnyHashable(verticalTopSpacerID)
                 anchor = .top
+                performScroll = {
+                    proxy.scrollTo(verticalTopSpacerID, anchor: .top)
+                }
             } else if id == last {
-                scrollTarget = AnyHashable(id)
                 anchor = UnitPoint(x: 0.5, y: 0.74)
+                performScroll = {
+                    proxy.scrollTo(id, anchor: anchor)
+                }
             } else {
-                scrollTarget = AnyHashable(id)
                 anchor = .center
+                performScroll = {
+                    proxy.scrollTo(id, anchor: anchor)
+                }
             }
         } else {
-            // 横版模式：水平滚动锚点
-            scrollTarget = AnyHashable(id)
             if id == first {
                 anchor = .trailing
             } else if id == last {
                 anchor = .leading
             } else {
                 anchor = .center
+            }
+            performScroll = {
+                proxy.scrollTo(id, anchor: anchor)
             }
         }
 
@@ -1366,10 +1392,10 @@ struct HistoryListView: View {
             guard !Task.isCancelled, selectedId == id else { return }
             if shouldAnimate {
                 withAnimation(.easeOut(duration: 0.2)) {
-                    proxy.scrollTo(scrollTarget, anchor: anchor)
+                    performScroll()
                 }
             } else {
-                proxy.scrollTo(scrollTarget, anchor: anchor)
+                performScroll()
             }
         }
     }
@@ -1377,6 +1403,10 @@ struct HistoryListView: View {
     private func handleSelectionChange(to id: ClipboardItem.ID?, proxy: ScrollViewProxy) {
         scrollToItem(id: id, proxy: proxy)
         syncPreviewWithSelection(id)
+    }
+
+    private func requestScrollToSelection() {
+        scrollRequestToken += 1
     }
 
     private func syncPreviewWithSelection(_ id: ClipboardItem.ID?) {
@@ -1568,6 +1598,8 @@ struct HistoryListView: View {
         
         if selectedId != item.id {
             selectedId = item.id
+        } else {
+            requestScrollToSelection()
         }
 
         if isPreviewOpen, selectedId == item.id {
@@ -1649,14 +1681,14 @@ struct HistoryListView: View {
         }
 
         if let firstId = displayItems.first?.id {
-            // 已经是第一个时不重复设置，避免不必要的“再聚焦”视觉闪动。
             if selectedId != firstId {
                 selectedId = firstId
+            } else if force {
+                requestScrollToSelection()
             }
             return
         }
 
-        // 列表还没准备好时，稍后重试一次。
         if force {
             selectedId = nil
         }
@@ -1665,6 +1697,8 @@ struct HistoryListView: View {
             if force || selectedId == nil {
                 if selectedId != firstId {
                     selectedId = firstId
+                } else if force {
+                    requestScrollToSelection()
                 }
             }
         }
