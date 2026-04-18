@@ -69,6 +69,7 @@ struct HistoryListView: View {
     @State private var workspaceObserver: NSObjectProtocol?
     @State private var interaction = HistoryListInteractionState()
     @State private var scrollRequestToken: Int = 0
+    @State private var keyboardHandlerKey = "historyNavigation-\(UUID().uuidString)"
     
     private let doubleTapInterval: TimeInterval = 0.25
     private let previewUpdateInterval: TimeInterval = 0.12
@@ -692,7 +693,7 @@ struct HistoryListView: View {
     private func setupKeyboardHandlers() {
         EventDispatcher.shared.registerHandler(
             matching: [.keyDown, .flagsChanged],
-            key: "historyNavigation",
+            key: keyboardHandlerKey,
             priority: 100
         ) { event in
             return handleKeyEvent(event)
@@ -700,7 +701,7 @@ struct HistoryListView: View {
     }
     
     private func cleanupKeyboardHandlers() {
-        EventDispatcher.shared.unregisterHandler("historyNavigation")
+        EventDispatcher.shared.unregisterHandler(keyboardHandlerKey)
     }
     
     // MARK: - Scroll Wheel Navigation
