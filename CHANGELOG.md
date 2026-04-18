@@ -4,6 +4,104 @@ This file is auto-generated from GitHub Releases by [release-changelog-bot](.git
 
 <!-- release-changelog-bot:auto -->
 
+<!-- release-changelog-bot:tag:v1.4.2 -->
+## v1.4.2 — v1.4.2 | Oops
+
+- **Tag:** `v1.4.2`
+- **Published:** 2026-04-18T06:48:36Z
+
+### Release notes
+
+<p align="center">
+  <a href="https://deckclip.app/download" rel="noopener noreferrer" target="_blank">
+    <img width="1525" height="896" alt="Deck" src="https://github.com/yuzeguitarist/Deck/raw/main/photos/Deck.webp" style="max-width: 100%; height: auto;" />
+  </a>
+</p>
+
+---
+
+## Release Notes v1.4.2
+
+### Added
+
+-   Deck AI can now do more than create Smart Rules. It can also list, read, modify, and delete existing rules, and both the in-app approval sheet and the `deckclip chat` approval overlay now show rule previews, change summaries, and delete warnings.  
+
+-   `deckclip chat` now shows an approval overlay for actions that require authorization, including creating, modifying, or deleting script plugins, writing or deleting clipboard items, and generating Smart Rules. You can review the summary and preview in the terminal, then approve with `Y / Enter` or reject with `N / Esc`.  
+
+-   Patch previews for script plugin changes are now structured by file, hunk, and added or removed lines. Both regular diffs and `*** Begin Patch` style patches are supported, and file moves are recognized with old-to-new path mapping.  
+
+-   The approval overlay now applies basic syntax highlighting to `manifest.json`, JSON, and JavaScript blocks, and long previews can be scrolled independently.  
+
+### Improvements
+
+-   “Auto delete after” now supports a minimum of 1 minute. Within the first 5 minutes, you can choose 1 / 2 / 3 / 4 / 5 minutes directly, while values above 5 minutes continue to use the original 5-minute step cadence. AI-generated or AI-modified rules now support the same 1-minute minimum.  
+
+-   During clipboard search, memory saving, session context reads or writes, script plugin execution, and similar steps, the chat UI now shows clearer in-progress status text in both the header and transcript tail. Repeated searches also display an incrementing count to reduce the feeling that the session is stuck.  
+
+-   When the approval overlay opens on macOS, Deck temporarily switches to an ASCII-capable keyboard layout and restores the previous input source afterward, making `Y / N` approval shortcuts more reliable under Chinese IMEs and similar input methods.  
+
+-   The `deckclip chat` implementation has been split into `app_impl`, `approval`, `render`, and `tests` modules, making future iteration on chat and approval features easier to maintain.  
+
+-   Rebalanced LAN sharing discovery behavior across background, display sleep, and connection state transitions. Instead of frequently pausing, resuming, or rebuilding networking objects, Deck now prefers to keep the discovery path stable, reducing crash risk first while also avoiding the overhead caused by repeated teardown and rebuild churn.  
+
+-   Clipboard fallback polling now adapts its interval to user inactivity, Low Power Mode, and thermal state, and avoids redundant rescheduling when nothing changes, reducing unnecessary wakeups while Deck is idle in the background.  
+
+### Changes
+
+-   Changes to the LAN sharing device name now take effect externally the next time LAN sharing is turned back on, and “Refresh Search” now preserves the current session and discovery path instead of rebuilding the entire LAN sharing stack just to refresh the list.  
+
+-   Deck now automatically scans for app binary architectures that are unnecessary for the current Mac right after launch and immediately cleans them up when removable content is found. This no longer depends on running database cleanup or one-click maintenance first. The related Settings copy has been updated to reflect automatic cleanup on launch, while the one-click maintenance path now serves as a fallback and secondary pass.  
+
+-   When you clearly express an intent like delete, modify, write, or create, Deck AI now proceeds directly with the matching tool call and leaves the final confirmation to the system approval sheet. It no longer asks you to repeat yourself, type a fixed confirmation phrase, or go through extra rounds of verbal confirmation. Actions such as deleting a script plugin, deleting clipboard content, or overwriting an existing plugin now continue immediately when the target is clear and uniquely identified, and only ask follow-up questions when the target is ambiguous or has duplicate or near-matching candidates.  
+
+### Fixes
+
+-   Fixed an issue where Shortcuts / App Intents metadata could disappear, stop registering, or even crash during launch when complete strict concurrency checking was enabled together with default `MainActor` isolation. The related static metadata is now explicitly marked as nonisolated, and clipboard entity mapping only hops back to the main actor when reading truly UI-isolated properties, preserving both Swift 6 concurrency safety and stable Shortcuts registration.  
+
+-   Updated and completed localization coverage for the binary slimming settings so the new semantics—automatic cleanup on launch and fallback slimming during one-click maintenance—stay consistent across languages, while removing the old wording that described launch-time scan-only behavior or slimming as part of maintenance only.  
+
+-   Resolved `rand` and `lru` related security advisories in `deckclip` by replacing the aggregate `ratatui` dependency with direct `ratatui-core`, `ratatui-crossterm`, and `ratatui-widgets` dependencies, removing the old `termwiz` transitive chain. This is an internal security and compatibility update only and does not change the Swift app integration contract, runtime behavior, or UI.  
+
+-   Fixed an issue where the Deck CLI PATH installer could guess the wrong zsh startup file, mistake a plain directory string for an existing PATH setup, or even create a new shell startup file when falling back to `~/.local/bin`. It now resolves the actual zsh startup file first and only appends Deck’s managed PATH line to an existing writable file; if the target cannot be determined safely, it skips the update instead of touching the user’s shell config.  
+
+-   Fixed an abnormal memory growth issue in a specific background scheduling path, reducing memory usage from 56GB+ to around 30MB.  
+
+-   Fixed a concurrency issue where Smart Rule auto-delete could retrigger during cancellation and rescheduling, preventing background task storms and abnormal resource usage.  
+
+-   Improved the stability of update hash record write, read, and tamper-validation flows to reduce the risk of sporadic update verification issues.  
+
+-   In `deckclip chat`, Command + Delete and Control + U now follow normal terminal behavior by deleting only the text before the cursor on the current line instead of wiping the whole line. If the cursor is already at the start of the line, the previous newline is no longer removed by mistake.  
+
+-   Fixed an issue in `deckclip chat`/`deckclip` where switching input sources during unfinished Chinese IME composition after opening the `/` command palette could trigger an empty terminal paste event and incorrectly inject the latest clipboard text into the input field. When the terminal actually pastes normal text, Deck now prefers the terminal's real pasted content instead of the internal chat clipboard fallback. Slash suggestions now stay intact, and the newest clipboard entry is no longer pasted unexpectedly.  
+
+-   In `deckclip chat`/`deckclip`, very large pasted text is now collapsed into a compact placeholder block inside the composer with a small summary card shown above the input, preventing the editor from being flooded by the full payload. The full original text is automatically restored on submit, so no context is lost and normal editing around the pasted block remains intact.  
+
+-   Fixed an issue where `deckclip chat`/`deckclip` could intermittently hit a protocol error and abort the first reply in terminal follow-output mode when local models responded very quickly. Deck now completes the session acknowledgment before consuming later streaming events, making fast local setups such as LM Studio more reliable.  
+
+-   Wrapper markers in machine-generated patches are now filtered out, so the approval overlay no longer dumps large blocks of raw patch wrapper text and is easier to read overall.  
+
+-   Streaming output, approval waiting states, and short status prompts now stay aligned more consistently near the bottom of the viewport, and existing conversation content no longer shifts upward unexpectedly while generating.  
+
+-   Fixed the double-scroll behavior in Space-triggered code previews and rebuilt the top language header. Code previews now use a single scrolling path, while the language strip has been refined into a tighter frosted bar with a more natural blur transition. Labels such as `TypeScript` were also fine-tuned to reduce hard clipping and visible edge artifacts near the top.  
+
+-   Fixed an issue where LAN sharing could repeatedly cancel and rebuild the underlying system discovery chain after backgrounding, display sleep, manual refresh, or peer state changes, which could lead to unexpected exits or crashes. This update prioritizes reducing that high-risk lifecycle churn.  
+
+### Tests
+
+-   Added Smart Rule AI tool lifecycle tests covering list, read, modify, and delete flows, plus validation for the 1-minute `auto_delete` minimum to reduce regression risk around rule editing and auto-delete behavior.  
+
+-   Added regression coverage for render performance, input layout, input history, attachment restoration, slash command normalization, approval overlays, streaming states, and line-deletion behavior to strengthen `deckclip chat` test coverage.  
+
+-   Added regression tests for terminal paste handling to ensure that empty paste events triggered while switching input sources during unfinished Chinese IME composition do not corrupt slash queries, and that normal text pastes prefer the terminal's actual pasted text over the internal chat clipboard fallback text.  
+
+-   Added regression tests for large paste handling in `deckclip chat`, covering placeholder collapse for oversized pasted text, full-text restoration before submit, whole-block deletion at placeholder boundaries, history restoration, and input panel height changes to reduce regression risk in both editing and submission flows.  
+
+-   Added regression coverage for Smart Rule auto-delete scheduling and strengthened update hash record read/write and tamper-validation tests to reduce future regression risk.
+
+### Assets
+
+- [`Deck.dmg`](https://github.com/yuzeguitarist/Deck/releases/download/v1.4.2/Deck.dmg)
+
 <!-- release-changelog-bot:tag:v1.4.1 -->
 ## v1.4.1 — v1.4.1 | contrite
 
