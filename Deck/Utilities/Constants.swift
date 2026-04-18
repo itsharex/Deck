@@ -63,6 +63,11 @@ enum Const {
     static let maxHorizontalPanelHeight: CGFloat = 420.0
     static let resizeHandleHeight: CGFloat = 8.0
     static let topBarHeight: CGFloat = 44.0
+    static let verticalFloatingTopBarHeight: CGFloat = 40.0
+    static let verticalFloatingTopBarTopPadding: CGFloat = 5.0
+    static let verticalFloatingTopBarReservedHeight: CGFloat = verticalFloatingTopBarHeight + verticalFloatingTopBarTopPadding
+    static let verticalFloatingTopBarFadeHeight: CGFloat = 52.0
+    static let verticalFloatingTopBarOverlayHeight: CGFloat = verticalFloatingTopBarReservedHeight + verticalFloatingTopBarFadeHeight
     static let settingWidth: CGFloat = {
         // Use wider window for English/German due to longer text
         let languageCode = Locale.preferredLanguages.first?.lowercased() ?? ""

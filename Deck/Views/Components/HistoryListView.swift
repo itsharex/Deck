@@ -87,6 +87,7 @@ struct HistoryListView: View {
     private let vimDoubleKeyInterval: TimeInterval = 0.5  // Time window for dd command
     private let bottomBarHeight: CGFloat = 50
     private let verticalBottomPreFadeHeight: CGFloat = 56
+    private let verticalTopSpacerID = "history-list-vertical-top-spacer"
 
     private var verticalBottomOverlayHeight: CGFloat {
         bottomBarHeight + verticalBottomPreFadeHeight
@@ -94,6 +95,10 @@ struct HistoryListView: View {
 
     private var verticalBottomToolbarStartLocation: CGFloat {
         verticalBottomPreFadeHeight / verticalBottomOverlayHeight
+    }
+
+    private var verticalListTopInset: CGFloat {
+        Const.verticalFloatingTopBarReservedHeight
     }
 
     private var verticalListBottomInset: CGFloat {
@@ -526,6 +531,11 @@ struct HistoryListView: View {
     private func verticalScrollContent(proxy: ScrollViewProxy) -> some View {
         ScrollView(.vertical, showsIndicators: false) {
             LazyVStack(spacing: Const.verticalRowSpace) {
+                Color.clear
+                    .frame(height: verticalListTopInset)
+                    .id(verticalTopSpacerID)
+                    .allowsHitTesting(false)
+
                 ForEach(IndexedCollection(displayItems), id: \.element.id) { index, item in
                     verticalRow(for: item, at: index)
                 }
@@ -1321,18 +1331,23 @@ struct HistoryListView: View {
             return
         }
 
+        let scrollTarget: AnyHashable
         let anchor: UnitPoint
         if vm.layoutMode == .vertical {
             // 竖版模式：垂直滚动锚点
             if id == first {
+                scrollTarget = AnyHashable(verticalTopSpacerID)
                 anchor = .top
             } else if id == last {
+                scrollTarget = AnyHashable(id)
                 anchor = UnitPoint(x: 0.5, y: 0.74)
             } else {
+                scrollTarget = AnyHashable(id)
                 anchor = .center
             }
         } else {
             // 横版模式：水平滚动锚点
+            scrollTarget = AnyHashable(id)
             if id == first {
                 anchor = .trailing
             } else if id == last {
@@ -1351,10 +1366,10 @@ struct HistoryListView: View {
             guard !Task.isCancelled, selectedId == id else { return }
             if shouldAnimate {
                 withAnimation(.easeOut(duration: 0.2)) {
-                    proxy.scrollTo(id, anchor: anchor)
+                    proxy.scrollTo(scrollTarget, anchor: anchor)
                 }
             } else {
-                proxy.scrollTo(id, anchor: anchor)
+                proxy.scrollTo(scrollTarget, anchor: anchor)
             }
         }
     }
